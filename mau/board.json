@@ -1,0 +1,148 @@
+{
+  "goal": "Gateway giới hạn tốc độ (rate limit) theo khách hàng: vượt hạn mức thì trả 429, số đếm dùng chung giữa các pod qua kho dữ liệu chung.",
+  "design_dir": "docs/design/rate-limit-theo-khach-hang",
+  "gate": [
+    "cargo fmt --all --check",
+    "cargo clippy --all-targets --locked -- -D warnings",
+    "cargo test --locked"
+  ],
+  "phases": [
+    {
+      "id": 1,
+      "title": "Bộ đếm cửa sổ trượt (module độc lập)",
+      "status": "done",
+      "notes": "round 2: qc PASS, qc2 PASS, code-review APPROVE; gate 4/4 xanh. Ghi nhận: MINOR (tên hàm) -> ticket phụ, không chặn.",
+      "round": 2,
+      "req_ids": [
+        "REQ-001",
+        "REQ-002"
+      ],
+      "acceptance": [
+        "REQ-001: Test - bộ đếm trả đúng số request trong cửa sổ 60 giây (6 ca biên trong test `rate_window_test`)",
+        "REQ-002: Test - hai pod đếm chung một khoá; số đếm không lệch quá 1 (test cần kho dữ liệu thật, `#[ignore]`)"
+      ],
+      "phase_gate": [
+        "cargo test --locked --test rate_window_test"
+      ],
+      "gate": [
+        {
+          "cmd": "cargo fmt --all --check",
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "cmd": "cargo clippy --all-targets --locked -- -D warnings",
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "cmd": "cargo test --locked",
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "cmd": "cargo test --locked --test rate_window_test",
+          "exit": 0,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Móc vào luồng request, trả 429 kèm header Retry-After",
+      "status": "review",
+      "notes": "engine DONE: HEAD bbb2222. Bàn giao: header phải ghi ĐÈ chứ không thêm (hệ thống chuẩn ghi đè).",
+      "round": 1,
+      "req_ids": [
+        "REQ-003",
+        "REQ-004"
+      ],
+      "acceptance": [
+        "REQ-003: Test - vượt hạn mức trả 429, trong hạn mức giữ nguyên hành vi cũ (so với hệ thống chuẩn)",
+        "REQ-004: Test - 429 có header `Retry-After` đúng số giây còn lại của cửa sổ"
+      ],
+      "phase_gate": [
+        "cargo test --locked --test rate_limit_hook_test"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Cấu hình hạn mức, metric và log khởi động",
+      "status": "pending",
+      "notes": "",
+      "round": 1,
+      "req_ids": [
+        "REQ-005",
+        "REQ-006"
+      ],
+      "acceptance": [
+        "REQ-005: Inspection - bảng hạn mức hỏng hoặc rỗng làm tiến trình dừng lúc khởi động (fail-closed), log nêu tên file và lý do",
+        "REQ-006: Demonstration - metric `rate_limit_rejected_total{tenant}` tăng khi bị 429 trên cụm test"
+      ],
+      "phase_gate": [
+        "cargo test --locked --test rate_config_test"
+      ]
+    }
+  ],
+  "agents": {
+    "engine": "engine-p2",
+    "qc": "qc-p2-r1",
+    "qc2": "qc2-p2-r1",
+    "code-reviewer": "code-review-p2-r1"
+  },
+  "models": {
+    "engine": "<provider>/<model-engine>",
+    "qc": "<provider>/<model-qc>",
+    "qc2": "<provider>/<model-qc2>",
+    "code-reviewer": "<provider>/<model-review>",
+    "devops": "<provider>/<model-devops>",
+    "verifier": "<provider>/<model-verifier>",
+    "documenter": "<provider>/<model-documenter>"
+  },
+  "log": [
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 1 added: Bộ đếm cửa sổ trượt (module độc lập) [REQ-001, REQ-002]"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 2 added: Móc vào luồng request, trả 429 kèm header Retry-After [REQ-003, REQ-004]"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 3 added: Cấu hình hạn mức, metric và log khởi động [REQ-005, REQ-006]"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 1: pending -> engine"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 1: engine -> review (engine DONE: HEAD aaa1111, 14 test mới, 212 -> 226 pass)"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 1: review -> engine (round 1: qc FAIL REQ-002 (số đếm lệch 3 khi hai pod ghi cùng lúc); code-review REQUEST_CHANGES MAJOR: tự chế lại bộ đếm nguyên tử có sẵn trong thư viện chuẩn)"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 1: engine -> review"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 1: review -> done (round 2: qc PASS, qc2 PASS, code-review APPROVE; gate 4/4 xanh. Ghi nhận: MINOR (tên hàm) -> ticket phụ, không chặn.)"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 2: pending -> engine"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "phase 2: engine -> review (engine DONE: HEAD bbb2222. Bàn giao: header phải ghi ĐÈ chứ không thêm (hệ thống chuẩn ghi đè).)"
+    },
+    {
+      "ts": "2026-10-07T03:23:50+00:00",
+      "event": "ví dụ: phase 3 chưa bắt đầu; đợi phase 2 qua review và gate"
+    }
+  ]
+}
