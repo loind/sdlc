@@ -68,7 +68,7 @@ Mỗi bài rút từ một sự cố hoặc một lần review bắt lỗi thậ
 ## D. Tài liệu và nâng phụ thuộc
 
 20. **Tài liệu viết gọn dễ bịa giá trị: bắt chép nguyên văn và review bằng diff.**
-    Xem [`04`](04-tai-lieu-cho-agent.md). Rút gọn hai runbook sinh ra URL, tên biến, cổng sai và làm mất bước cài đặt.
+    Xem [`04`](04-tai-lieu-cho-agent.md). Rút gọn hai runbook sinh ra URL, tên biến, cổng sai và làm mất bước cài đặt. Khi review bản gọn, **so từng lệnh với bản cũ bằng diff** (tách mọi lệnh ra hai danh sách rồi so) thay vì đọc bằng mắt: bản mới có lệnh nào không có trong bản cũ là giá trị bịa.
 
 21. **Cổng tài liệu bằng `git grep` không thấy file chưa commit và cấm tên cũ xuất hiện ngay cả để nói "đã bỏ".**
     Thử trên bản đã commit. Viết vòng, để tên cũ ở ADR. Chứng minh cổng không rỗng bằng cách thêm tạm một tên đã bỏ.
@@ -86,3 +86,17 @@ Mỗi bài rút từ một sự cố hoặc một lần review bắt lỗi thậ
 
 25. **Brief cho build/deploy phải cấm xoá ngoài Docker.**
     Một devops child xoá hàng chục GB cache của thư mục home để lấy chỗ vì brief chỉ nói "dọn cache và image cũ". Giờ brief nói: chỉ cache build và image của dự án; thiếu đĩa thì BLOCKED; liệt kê mọi thứ đã xoá.
+
+## F. Review mã
+
+26. **Review nhiều vòng: thường 2, tối đa 3, mỗi vòng một reviewer mới.**
+    Vòng 1 bắt lỗi rõ, vòng 2 kiểm bản sửa và hay bắt lỗi mới do chính bản sửa gây ra. Sang vòng 3 mà vẫn còn lỗi chặn là dấu hiệu thiết kế hoặc phạm vi phase có vấn đề: orchestrator dừng và quyết, không mở vòng 4 mù.
+
+27. **Reviewer tự đo lại, không tin lời engine.**
+    "Đã sửa" và "test xanh" từng đi kèm một bản sửa không chạm tới ca lỗi. Reviewer chạy probe riêng, chạy trên bản sao của cây, so bản cũ với bản mới (A/B). Lời của engine chỉ cho biết nên đo ở đâu.
+
+28. **Với quyết định bảo mật: review bảo mật và QC fuzz vi sai với hệ thống chuẩn chạy song song.**
+    Review đọc mã thấy lỗ hổng logic. Fuzz vi sai với hệ thống chuẩn thấy chỗ hành vi lệch mà mã đọc vẫn "hợp lý". Một bên không thay được bên kia.
+
+29. **Test chập chờn khi chạy song song thường do cache hoặc cổng dùng chung.**
+    Hai lần chạy cùng ghi một thư mục cache, hoặc cùng chiếm một cổng, làm kết quả đổi theo thứ tự chạy. Reviewer chạy lại nhiều lần và chạy song song để lộ ra. Mỗi lần chạy dùng thư mục cache riêng và cổng ngẫu nhiên. Xem thêm bài 9.

@@ -4,20 +4,36 @@
 
 ## 1. Nhiệm vụ riêng của vai
 
-Vai: code-reviewer. Soát diff về ĐÚNG ĐẮN và THỪA THÃI. Không chấm requirement. Không sửa mã.
+Vai: code-reviewer. Review chất lượng diff theo skill `ponytail-review` (v5): ĐÚNG, AN TOÀN, CHỊU TẢI, CÓ TEST, NHANH, GỌN. Không chấm requirement. Không sửa mã.
 
 Diff: `git diff <điểm-cố-định>...HEAD` (ba chấm), nhánh <nhánh>, commit <SHA>. Kiểm điểm cố định có thật và diff không rỗng trước khi bắt đầu.
 Nguồn chuẩn: <file quy tắc code, nếu có>. Quy tắc của repo thắng quy tắc chung.
 
-Soát:
-- Đúng đắn: logic, nhánh lỗi, an toàn (nhất là quyết định bảo mật dựa trên đường dẫn đã giải mã), hồi quy, test có thật sự bắt lỗi không.
-- Thừa thãi (skill `ponytail-review`): tự chế lại thư viện chuẩn, phụ thuộc không cần, trừu tượng cho một nơi gọi, cấu hình cho giá trị không bao giờ đổi, mã chết. Ưu tiên XOÁ hơn THÊM.
+Đọc trước: skill `ponytail-review` (bản 5.x), rồi diff, rồi CẢ mã liên quan: nơi gọi mọi hàm đã đổi chữ ký hoặc hành vi (grep từng nơi), hàm mà mã mới gọi, test, README. Lần theo luồng thật: dữ liệu vào đâu, lưu gì, ra gì. Tìm tải mong đợi trong repo (README, cấu hình deploy) và ghi rõ bạn giả định tải nào.
+
+Soát theo thứ tự quan trọng:
+1. Đúng: kết quả sai, crash, ca biên (rỗng, 0, phần tử cuối, làm tròn, múi giờ), nơi gọi bị vỡ, bản sửa ở một nơi gọi trong khi hàm dùng chung vẫn hỏng.
+2. An toàn: bảo mật (nhất là quyết định dựa trên đường dẫn đã giải mã), bí mật, đầu vào người dùng không kiểm, mất dữ liệu (nuốt lỗi, ghi sai thứ tự, thiếu giao dịch).
+3. Chịu tải: ổn với một người nhưng sai với nhiều: đua kiểm-rồi-ghi, trạng thái từng tiến trình mà phải dùng chung, bộ nhớ chỉ tăng, một truy vấn cho mỗi phần tử, O(n^2).
+4. Có test: logic rủi ro mới (nhánh, parser, tiền, bảo mật, ghi dữ liệu, bản sửa lỗi) phải có ít nhất một test sẽ ĐỎ khi mã hỏng. Một test tốt, không đòi phủ.
+5. Nhanh: chậm lớn là vấn đề. Tối ưu nhỏ chỉ là gợi ý.
+6. Gọn: mã chết, tuỳ chọn không dùng, tự chế lại thư viện chuẩn, phụ thuộc không cần, trừu tượng một nơi gọi, bản sao gần giống phải đổi cùng nhau, hàm làm nhiều việc không liên quan (tách theo việc, không theo số dòng). Ưu tiên XOÁ hơn THÊM.
 - Mã mới có đúng quy ước của repo không (tên, chỗ đặt, tài liệu cập nhật cùng commit).
 
+Quy tắc kiểm trước khi báo:
+- TỰ ĐO LẠI, đừng tin lời engine: chạy probe, chạy trên bản sao của cây, so bản cũ với bản mới (A/B). Đọc mã chưa đủ khi phát hiện dựa vào hành vi chạy.
+- Mỗi phát hiện cần MỘT ca cụ thể ("đầu vào hoặc tình huống này dẫn tới kết quả sai này"). Không có ca thì không có phát hiện. Đọc lại dòng để chắc nơi gọi có thật và giá trị rỗng có thể xảy ra.
+- Chỗ rút gọn có comment `shortcut:` nêu rõ giới hạn là quyết định, không phải phát hiện, trừ khi tải mong đợi đã vượt giới hạn đó.
+- Đề xuất bản sửa nhỏ nhất có tác dụng, ưu tiên bản xoá mã. Không phong cách cá nhân, không "cân nhắc", không lo ngại mơ hồ.
+
 Báo cáo (dòng đầu DONE, rồi VERDICT):
+- Mở đầu bằng 2-3 câu: thay đổi này làm gì.
 - `VERDICT: APPROVE` hoặc `VERDICT: REQUEST_CHANGES`.
-- Mỗi phát hiện một dòng: mức độ (BLOCKER, MAJOR, MINOR, NIT), `file:dòng`, cách sửa hoặc cắt ngắn gọn.
-- Không có phát hiện thì ghi rõ đã đọc những file nào.
+- Phát hiện đánh số liên tục, gom ba nhóm: Cần sửa (BLOCKER: lỗi, bảo mật, mất dữ liệu, vỡ ở tải mong đợi), Nên sửa (MAJOR: mã rủi ro thiếu test, chậm thật, trùng lặp, hàm trộn việc, mã không nên tồn tại), Nên có (MINOR/NIT: tối ưu nhỏ, dạng ngắn hơn).
+- Mỗi phát hiện gồm dòng tiêu đề (mức độ, `file:dòng`, tên lỗi) và 4 phần, mỗi phần 1-2 câu ngắn: Đây là gì. Vấn đề (kèm ca cụ thể). Cách sửa nhỏ nhất. Nếu bỏ qua thì sao.
+- Kết: `Lean: -<N> dòng` nếu có phát hiện về gọn; `Chưa kiểm:` một dòng nếu có thứ quan trọng mà bạn không kiểm được (ví dụ không chạy được probe).
+- Không có phát hiện thì ghi rõ đã đọc những file nào và đã tự chạy gì.
+- Không sửa mã, chỉ liệt kê.
 
 ## 2. Khung chung (chép cho mọi vai)
 

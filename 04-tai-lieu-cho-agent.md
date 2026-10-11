@@ -114,11 +114,12 @@ Quy tắc:
 
 ## Rút gọn mã và tài liệu (ponytail)
 
-Skill `ponytail` và `ponytail-review` ép "ít nhất mà vẫn chạy được":
+Skill `ponytail` ép "ít nhất mà vẫn chạy được" (bản 5.1.0 trong thư mục [`skills/`](skills/README.md)):
 
 - Thang quyết định: có cần tồn tại không (YAGNI) -> đã có trong repo chưa -> thư viện chuẩn làm được không -> tính năng nền tảng làm được không -> một dòng trước khi viết năm mươi.
 - Với tài liệu cũng vậy: xoá đoạn không ai dùng, bỏ mục không có người đọc, thay đoạn dài bằng sơ đồ mermaid. Tài liệu dài và không có hình là phản hồi thật từ người đọc dự án gốc.
-- `ponytail-review` chỉ tìm cái nên xoá: tự chế lại thư viện chuẩn, phụ thuộc thừa, trừu tượng suy đoán, linh hoạt chết.
+- `ponytail-review` (từ v5, hiện 5.1.0) **không còn chỉ tìm mã thừa**. Nó là review chất lượng đầy đủ theo thứ tự: đúng, an toàn, chịu tải, có test, nhanh, gọn. "Gọn" vẫn là một tiêu chí (xoá hơn thêm), nhưng đứng cuối.
+- Reviewer đọc cả mã liên quan (nơi gọi, hàm được gọi, test, README), không chỉ diff, và ước tải mong đợi từ repo. Mỗi phát hiện cần một ca cụ thể và được giải thích bằng lời dễ hiểu.
 - Cân bằng: rút gọn không được làm mất giá trị hay lý do (xem mục trên).
 
 Quy tắc viết cho agent (skill `writing-for-agents`): ngắn, ra lệnh, có ví dụ, không dài dòng giải thích điều agent đã biết.

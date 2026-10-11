@@ -89,7 +89,7 @@ sequenceDiagram
 1. **engine** làm đúng một phase: lập kế hoạch ngắn, viết test đỏ trước, viết mã, chạy toàn bộ test. Commit sớm, từng bước nhỏ, trên nhánh feature. Không `push`.
 2. **qc** chấm diff **theo acceptance của phase**, từng `REQ` một: PASS hoặc FAIL kèm thứ còn thiếu. Dùng đúng phương pháp kiểm ghi trong SRS. Không kiểm được thì là FAIL, không phải PASS.
 3. **qc2** (nếu dùng) chấm cùng brief nhưng model khác, độc lập. Mục đích: bắt thứ qc bỏ sót (nhánh lỗi, dữ liệu biên, lộ bí mật).
-4. **code-review** soát diff về **đúng đắn và thừa thãi**. Không chấm requirement. Ưu tiên xoá hơn thêm. Trả `APPROVE` hoặc `REQUEST_CHANGES`, mỗi phát hiện có mức độ (`BLOCKER`, `MAJOR`, `MINOR`, `NIT`), `file:dòng`, cách sửa ngắn.
+4. **code-review** đọc và áp dụng skill `ponytail-review` (v5). Đây là review **chất lượng đầy đủ**, không chỉ tìm mã thừa. Thứ tự quan trọng: **đúng, an toàn, chịu tải, có test, nhanh, gọn** (xoá hơn thêm). Reviewer đọc **cả mã liên quan** (nơi gọi hàm đã đổi, hàm được gọi, test, README), không chỉ diff, và ước tải mong đợi từ repo. Không chấm requirement (việc của qc). Trả `APPROVE` hoặc `REQUEST_CHANGES`. Mỗi phát hiện có mức độ (`BLOCKER`, `MAJOR`, `MINOR`, `NIT`), `file:dòng`, ca cụ thể làm hỏng, cách sửa nhỏ nhất và hậu quả nếu bỏ qua. Chi tiết ở [`02`](02-vai-tro-va-brief.md#code-review).
 5. Orchestrator **chờ đủ** các reviewer rồi mới quyết. Mới có một phản hồi chưa phải verdict.
 6. Quy tắc gộp: **FAIL hoặc REQUEST_CHANGES của bất kỳ ai** là một vòng sửa. Khác biệt giữa các reviewer ghi vào báo cáo (đó là dữ liệu để chọn lại model).
 7. Tất cả PASS: orchestrator tự chạy gate (chung trước, riêng sau, lệnh rẻ nhất trước, dừng ở lệnh đỏ đầu tiên).
@@ -166,6 +166,9 @@ Child chạy dài mà không có mốc giờ thì không ai biết nó treo hay 
 5. Orchestrator kiểm diff cuối bằng mắt: phản hồi "đã sửa" của engine không phải bằng chứng. Với bản sửa nhỏ chỉ chạm tài liệu, có thể bỏ review đầy đủ nhưng phải kiểm diff không đụng `src/`, test, hay file khoá phụ thuộc.
 6. Reviewer không thấy phản hồi của nhau. Hai reviewer đồng ý vì một người đọc người kia chỉ là một reviewer.
 7. Phát hiện chưa chặn (`MINOR`/`NIT`): ghi vào ticket phụ, không chặn phase.
+8. Thường cần **2 vòng**. Tối đa **3 vòng**. Sang vòng 4 mà còn phát hiện chặn thì orchestrator dừng, xem lại thiết kế hoặc phạm vi phase rồi mới quyết (không tự mở vòng 4 mù).
+9. Reviewer **tự đo lại**, không tin lời engine: chạy probe, chạy trên bản sao của cây, so bản cũ với bản mới (A/B). Câu "đã sửa", "test xanh" của engine chỉ là điểm xuất phát (bài học 26 và 27 ở [`05`](05-bai-hoc.md)).
+10. Với thay đổi chạm quyết định bảo mật, chạy **review bảo mật** (code-review) và **QC fuzz vi sai với hệ thống chuẩn** (qc, qc2) **song song**. Hai bên tìm hai loại lỗi khác nhau (bài học 28).
 
 ## Khi nào hỏi người dùng
 

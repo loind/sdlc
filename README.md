@@ -29,7 +29,7 @@ flowchart TD
       direction LR
       QC["qc<br/>chấm theo acceptance"]
       QC2["qc2<br/>kiểm độc lập"]
-      CR["code-review<br/>đúng và thừa thãi"]
+      CR["code-review<br/>đúng, an toàn, chịu tải,<br/>có test, nhanh, gọn"]
     end
     R --> V{"Có FAIL hoặc<br/>REQUEST_CHANGES?"}
     V -->|"có"| E
