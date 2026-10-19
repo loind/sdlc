@@ -24,21 +24,22 @@ Output is one directory, four files:
 `phases.md` is a **contract**, not prose. The orchestrator reads it and copies it onto the board.
 Templates: `references/templates.md`. Read it before writing anything.
 
-## 0. Model và ngôn ngữ
+## 0. Model and language
 
-Skill này cần model mạnh - `claude-opus-5`, thinking `high`. Nếu phiên đang chạy model nhỏ hơn,
-nói với user một câu trước khi bắt đầu grill rồi để họ quyết: cây quyết định, cân trade-off và
-việc tìm ra vấn đề thiết kế là phần dễ hỏng nhất khi model yếu, mà hỏng thì không lộ ra ngay -
-nó lộ ra ở phase thứ ba khi engine xây sai thứ.
+This skill needs a strong model - `claude-opus-5`, thinking `high`. If the session runs a smaller
+model, tell the user in one sentence before you start grilling and let them decide: the design tree,
+the trade-offs and the hunt for design problems are what breaks first on a weak model, and the break
+does not show right away - it shows in the third phase, when the engine builds the wrong thing.
 
-Anh làm việc với user bằng **tiếng Việt có dấu đầy đủ**: mọi câu hỏi khi grill, mọi nhận xét, mọi
-báo cáo. Tài liệu sinh ra (`prd.md`, `srs.md`, `design.md`, `phases.md`) cũng viết bằng tiếng Việt -
-người đọc chúng là PM, QC và dev trong team, không phải model.
+Talk to the user in **Vietnamese with full diacritics**: every grilling question, every comment,
+every report. The generated documents (`prd.md`, `srs.md`, `design.md`, `phases.md`) are also
+written in Vietnamese - their readers are the team's PM, QC and devs, not a model. Headings and keys
+in the templates stay in English exactly as written; only the content under them is Vietnamese.
 
-Giữ nguyên tiếng Anh, không dịch: requirement id (`REQ-001`), `FR`/`NFR`, `must`/`should`/`could`,
-verification method (`Test` / `Demonstration` / `Inspection` / `Analysis`), lệnh shell, đường dẫn
-file, tên hàm/biến/collection, nhãn trong mermaid, và thuật ngữ kỹ thuật (cache, rollout, index,
-tenant isolation). Dịch một verification method là làm `qc` không map được về `srs.md`.
+Never translate, keep in English: requirement ids (`REQ-001`), `FR`/`NFR`, `must`/`should`/`could`,
+verification methods (`Test` / `Demonstration` / `Inspection` / `Analysis`), shell commands, file
+paths, function/variable/collection names, mermaid labels, and technical terms (cache, rollout,
+index, tenant isolation). A translated verification method is one `qc` cannot map back to `srs.md`.
 
 ## 1. Read before you ask
 
@@ -53,27 +54,78 @@ Step 4 is what makes phase gates real. A gate you invented is a gate that always
 
 ## 2. Grill
 
-Invoke the `grilling` skill and follow it: a design tree, worked in rounds, the whole frontier asked
-at once, each question numbered with your recommended answer.
+You build what you believe the user wants, and that belief is usually thinner than it feels. The
+grilling is for finding out what they actually want, and why - so the hundred decisions they never
+mention get made the way they would have made them.
 
-**5W1H is your coverage check, not a document section.** Before you declare a round's frontier
-complete, verify each is either answered or deliberately parked:
+### Your first message
+
+Two things, in this order, and nothing else:
+
+1. One line: if they would rather skip the questions, they can say so. If they do, you still write
+   the full package and still run every gate (section 5) - but every decision in it is marked as
+   **your call** in `design.md`, so they can check those first.
+2. One open question that gets them describing a real moment - "When was the last time this
+   caused a problem?" - not a menu.
+
+### The design tree is your map, not the user's
+
+Keep a design tree privately: every decision branches into the decisions that hang off it. The
+**frontier** is every decision whose prerequisites are settled. You never show the tree or say
+"frontier" - it only decides what you ask next.
+
+- **One question per message.** From the frontier, ask the one that unblocks the most branches.
+  A question whose answer depends on one still open waits.
+- **Facts are your job, never the user's.** A question you could answer by reading a file, a
+  config or a collection is a question you must not ask. Dispatch a sub-agent and do not wait on
+  it: only the questions downstream of that lookup wait; keep asking the rest.
+- **Open for intent, a guess for the how.** Why / Who questions are open, in plain text - their own
+  words carry intent your options cannot. What / Where / How questions come as a guess they can
+  correct ("My guess is this goes through the existing consumer, because …?"), via `AskUserQuestion` with your guess as
+  the first option. This is the one exception to the global rule that every question goes through
+  `AskUserQuestion`: an option list on an intent question steers the answer.
+- **A guess on a hard gate is not a default.** API contract, schema/index, auth, tenant isolation
+  (`merchant_id` or the tenant collection name), an external side effect, what "done" means: you may
+  guess, but you wait for an explicit yes. Everything local and low-risk gets your simplest reading,
+  stated once in the next playback, not asked.
+- **Say your defaults out loud.** Platform, library, which service owns it: find out early which
+  choices they want to make and which they hand to you. A default they never heard is one they could
+  not reject. Whatever you choose goes in `design.md` as your call, never as something they agreed to.
+- **Spike when talking is slower than trying.** A feasibility question ("does DocumentDB
+  support X?") is often cheaper to answer with a throwaway probe. Offer it; they decide. The probe's code
+  never reaches `phases.md` - only what it taught you does.
+
+**5W1H is your coverage check, not a document section.** Before you write anything, verify each is
+either answered or deliberately parked:
 
 | | Question | Lands in |
 |---|---|---|
-| Why | What breaks today if we do nothing? How do we know it worked? | `prd.md` |
+| Why | What breaks today if we do nothing? Why now? How do we know it worked? | `prd.md` |
 | Who | Who uses this, who operates it, who is affected downstream? | `prd.md`, C4 L1 actors |
-| What | What behaviour, what is explicitly NOT in scope? | `srs.md`, `prd.md` non-goals |
+| What | What behaviour, what is explicitly NOT in scope, what would make it a failure even if it works (anti-goals)? | `srs.md`, `prd.md` |
 | Where | Which service, which container, which environment? | `srs.md` C4 L1, `design.md` |
 | When | What order, what unblocks what, what can wait? | `phases.md` |
-| How | Which approach, and what did we reject? | `design.md` |
+| How | Which approach, what did we reject, what have they seen elsewhere (prior art)? | `design.md` |
 
-Two rules the grilling skill leaves to you:
+### Play back as you go
 
-- **Facts are your job.** A question you could answer by reading a file is a question you must not ask.
-- **Ask what changes the shape of the work**: an API contract, a schema, an auth rule, tenant isolation,
-  an external side effect, what "done" means. Everything local and low-risk gets your simplest reading,
-  stated once, not asked.
+As soon as you understand one part well enough to describe it, describe it back in 200-300 words,
+then return to questions about the next part. Each chunk is the draft of a section in `prd.md` or
+`srs.md`. Mark every guess as your guess; only what they said goes in as theirs. End each chunk by
+asking what is wrong or missing. A confirmed playback is a checkpoint, not approval of the package.
+
+### Size the work
+
+Once you understand what they want, pick a size, say it in one line, and let them override it:
+
+| Size | Output | Then |
+|---|---|---|
+| Quick, clear task | none - the request is the spec | leave this skill, say so |
+| Small change (would split into fewer than 3 phases) | a short design in chat, no files | normal workflow after their yes |
+| Project | the four-file package | `/orchestration` after section 6 |
+
+If it grows mid-way, stop, say so, and step up a size. Nothing steps down. If it is really several
+independent projects, say so, agree on an order, and design them one at a time.
 
 ## 3. Find the design problems
 
@@ -92,9 +144,11 @@ check what was built. Only you get to say the plan itself is wrong. Say it out l
 
 ## 4. Weigh the options
 
-For any decision that shapes the work, put 2-3 real options with trade-offs, recommend one, and say
-why the others lose. **Record the rejected options in `design.md`** - the next person to ask "why not
-just X?" deserves an answer that is not a re-derivation.
+For any decision that shapes the work, think wide privately: come up with several options and drop
+the weak ones, including any that fight what they told you about why. Show the user a comparison only
+when it helps them decide; otherwise recommend one and say why. Either way, **record the rejected
+options in `design.md`** - the next person to ask "why not just X?" deserves an answer that is not a
+re-derivation.
 
 Cut ruthlessly before you recommend: the requirement nobody asked for, the abstraction with one caller,
 the config for a value that never changes. A design package is not more valuable for being longer.
@@ -117,7 +171,7 @@ differently - they are supposed to give opposite answers:
 A phase gate that is already green is the single most expensive mistake you can make here, because
 nothing downstream catches it: the engine runs it, it passes, qc sees a passing build, the gate
 closes the phase, and a whole loop of agents finishes having written no code. Record the outcome
-per phase in the **Notes** line - `gate hiện đỏ: <lỗi ngắn>` - so the next reader can tell a real
+per phase in the **Notes** line - `gate red now: <short error>` - so the next reader can tell a real
 phase from a finished one.
 
 If every phase gate comes back green, you are not designing work - you are documenting work that
@@ -146,7 +200,37 @@ Self-check before you hand it over; fix inline, no second pass:
   a layer wearing a phase's name, and a rework round on it redoes most of the project.
 - No "TBD", no placeholder, no section that contradicts another.
 
-## 6. Hand off
+### Builder check
 
-Báo cho user đường dẫn thư mục và danh sách phase (tiếng Việt), rồi bảo họ chạy `/orchestration`.
+The self-check proves the package is well-formed; it cannot tell you what you never asked. After
+it passes, dispatch a fresh sub-agent with `references/builder-check.md`: an engineer who must run
+`/orchestration` on this package and cannot talk to the user. When you tell the user you are writing
+it up, say a reviewer reads it first and you may come back once with a few questions. Sort what the
+builder asks into three piles:
+
+- **Answered already** by the conversation or the repo: put the answer in the package.
+- **Minor:** a sensible builder could settle it without changing what gets built. Settle it and
+  record it in `design.md` as your call.
+- **Theirs:** only the user can answer it, and the answer changes what gets built.
+
+Bring the "theirs" pile in **one** message, most important first - the deliberate exception to one
+question per message. Update the package with their answers. That is the only round the check
+produces; do not run it twice.
+
+You are done grilling when the last playback is confirmed and the "theirs" pile is empty.
+
+## 6. Approve, then hand off
+
+<HARD-GATE>
+Nothing reaches `/orchestration` until the user approves the package itself - the four files, not
+the conversation about them. A confirmed playback, or "sounds good" to the idea, approves only what
+they were shown. For a small change, the gate is their yes to the in-chat design.
+
+One exception: if they opted out of the questions, they still approve the package, but you hand it
+over with the list of your calls on top.
+</HARD-GATE>
+
+Give the user the directory path, the phase list, and the list of **your calls** (the
+`## Agent's calls` section of `design.md`) so they check those first. Once they approve, tell them
+to run `/orchestration`.
 Do not start building. Do not create a persistent `goal` unless the user asked for one.
