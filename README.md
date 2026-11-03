@@ -18,7 +18,8 @@ Thư mục này mô tả một quy trình phát triển phần mềm mà **agent
 ```mermaid
 flowchart TD
   A["Ý tưởng / ticket"] --> B["thinker<br/>hỏi người dùng, đọc repo<br/>viết gói thiết kế"]
-  B --> B2{"Người dùng<br/>duyệt gói?"}
+  B --> BC["builder check<br/>sub-agent mới đọc gói,<br/>chỉ hỏi chỗ phải đoán<br/>(một vòng)"]
+  BC --> B2{"Người dùng<br/>duyệt gói?"}
   B2 -->|"chưa"| B
   B2 -->|"rồi"| C["orchestrator<br/>copy phase lên board<br/>chạy gate chung 1 lần"]
   C --> P

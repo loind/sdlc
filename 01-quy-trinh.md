@@ -41,12 +41,19 @@ stateDiagram-v2
 
 - **Đầu vào:** ý tưởng thô.
 - **Việc:** đọc repo trước (README, quy tắc agent, PRD cũ, mã liên quan, lệnh test và CI). Chỉ hỏi người dùng điều không có trong repo, theo cây quyết định (skill `grilling`). Gọi tên các vấn đề thiết kế. Cân 2-3 phương án và ghi phương án bị loại. Viết `docs/design/<slug>/{prd,srs,design,phases}.md`. **Chạy thử lệnh gate trước khi ghi vào `phases.md`.**
+- **Builder check:** sau khi gói qua phần tự kiểm, giao gói cho một sub-agent mới (prompt: [`skills/thinker/references/builder-check.md`](skills/thinker/references/builder-check.md)). Sub-agent đóng vai kỹ sư phải chạy orchestrator theo gói mà không được hỏi người dùng. Nó chỉ báo những chỗ phải đoán mà đoán sai thì build sai, xếp theo mức quan trọng. Thinker chia câu hỏi thành ba nhóm:
+  - **Đã có câu trả lời** trong cuộc trò chuyện hoặc trong repo: ghi câu trả lời vào gói.
+  - **Nhỏ:** một kỹ sư hợp lý tự quyết được mà không đổi thứ được build. Thinker tự quyết và ghi vào `## Agent's calls` trong `design.md`.
+  - **Của người dùng:** chỉ người dùng trả lời được, và câu trả lời đổi thứ được build. Gộp cả nhóm vào **một** tin nhắn, câu quan trọng nhất trước.
+
+  Chỉ chạy một vòng. Khi bắt đầu viết gói, báo trước cho người dùng là sẽ có một người đọc gói và thinker có thể quay lại một lần với vài câu hỏi. Lý do: phần tự kiểm chỉ chứng minh gói đúng hình dạng; nó không thấy điều thinker chưa từng hỏi. Ví dụ: acceptance có thể pass hết trong khi lỗ hổng mà requirement muốn chặn vẫn còn.
 - **DoD:**
   - [ ] Mỗi `REQ-xxx` có phương pháp kiểm: `Test`, `Demonstration`, `Inspection` hoặc `Analysis`.
   - [ ] Mỗi `REQ` nằm trong đúng một phase.
   - [ ] 3-7 phase. Không phase nào giữ hơn khoảng một phần ba số yêu cầu.
   - [ ] Gate chung xanh trên cây hiện tại. Gate riêng của mỗi phase đỏ (hoặc chưa chạy được). Gate riêng đã xanh nghĩa là việc đó đã xong rồi.
   - [ ] Mỗi dòng gate là một lệnh, không nối bằng `&&`.
+  - [ ] Builder check đã chạy đúng một vòng. Nhóm câu hỏi "của người dùng" đã được trả lời và ghi vào gói.
   - [ ] Người dùng duyệt gói.
 - **Đầu ra:** thư mục gói thiết kế. Mẫu: [`mau/goi-thiet-ke/`](mau/goi-thiet-ke/).
 

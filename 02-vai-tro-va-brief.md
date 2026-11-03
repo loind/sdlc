@@ -14,6 +14,7 @@
 |---|---|---|---|---|
 | **orchestrator** | Model mạnh nhất bạn có, thinking cao | model mạnh của phiên chính | Điều phối, gộp verdict, quyết định rework hay done, chạy gate, merge, ghi board và ticket | Board, comment ticket, báo cáo cho người dùng |
 | **thinker** (kỹ năng của phiên chính) | Model mạnh, thinking cao | model mạnh của phiên chính | Hỏi người dùng, đọc repo, viết gói thiết kế | `prd.md`, `srs.md`, `design.md`, `phases.md` |
+| **builder check** (sub-agent của thinker) | Model mạnh, ngữ cảnh mới | chưa dùng ở dự án gốc (thêm sau) | Đọc gói thiết kế như kỹ sư phải build theo nó mà không được hỏi người dùng. Chỉ báo chỗ phải đoán, xếp theo mức quan trọng. Chạy một vòng | Danh sách câu hỏi kèm file và mục, hoặc "nothing important left" |
 | **engine** | Model nhanh, rẻ, viết mã tốt | một model "flash" của nhà cung cấp thứ ba | Làm đúng một phase: test đỏ, mã, chạy test | Commit trên nhánh feature, báo cáo `DONE` kèm SHA |
 | **qc** | Model mạnh, chạy được lệnh | Sonnet bản mới nhất | Chấm diff theo acceptance, từng `REQ`; tự kiểm bằng chương trình thật | `VERDICT: PASS/FAIL` + từng REQ |
 | **qc2** | Model KHÁC họ với qc, thinking cao | một model thuộc họ khác | Kiểm độc lập song song với qc | `VERDICT: PASS/FAIL` |
@@ -35,6 +36,7 @@ qc            -> qc-p<phase>-r<vòng>          (tên mới mỗi vòng, không d
 qc2           -> qc2-p<phase>-r<vòng>
 code-review   -> code-review-p<phase>-r<vòng>
 devops / verifier / documenter -> một phiên mỗi vai, một lần ở cuối
+builder-check -> một phiên cho mỗi gói thiết kế, trước khi người dùng duyệt
 ```
 
 Gửi lại brief cho child đã tồn tại cùng tên thay vì spawn trùng. Spawn trả về ngay khi child được nhận, không trả kết quả: giao việc, ghi board, kết thúc lượt, chờ tin.
