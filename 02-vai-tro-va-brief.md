@@ -6,6 +6,7 @@
 - **Reviewer luôn là phiên mới** cho mỗi vòng. Tên phiên chứa số phase và số vòng (`qc-p3-r2`). Engine được dùng lại trong cùng một phase (qua các vòng sửa), và là phiên mới ở phase kế tiếp: ngữ cảnh dài làm trí nhớ kém đi, và chi tiết phase trước chỉ là nhiễu.
 - **Cái được chuyển giao là board và ghi chú bàn giao**, không phải phiên.
 - **Chọn model theo vai, không theo vị trí trong danh sách.** Ghim `id` model bạn muốn và để công cụ tra selector. Lấy phần tử đầu danh sách có thể ra một model cũ mà không ai biết.
+- **Mọi brief có deadline và buộc child báo cáo khi hết hạn.** Một heartbeat 5 phút kiểm từng child (xem [`01`](01-quy-trinh.md), mục Deadline và watchdog). Child không bao giờ bị thả nổi.
 - Model chạy việc con thì nhanh, rẻ. Quyết định (đọc hai reviewer đối chiếu nhau, rework hay done) ở lại với phiên điều phối dùng model mạnh.
 
 ## Bảng vai
@@ -58,7 +59,7 @@ BẮT BUỘC TRƯỚC KHI LÀM
 - Tiếng Việt có dấu, câu ngắn.
 
 AN TOÀN
-- Bọc mọi lệnh có thể treo bằng `timeout <giây>`. `curl` luôn có `-m 10`. Service chạy bằng `docker run -d`.
+- Bọc mọi lệnh có thể treo bằng giới hạn giờ: `timeout <giây>` (macOS không có `timeout`: dùng `perl -e 'alarm <giây>; exec @ARGV' <lệnh>`). `curl` luôn có `-m 10`. Service chạy bằng `docker run -d`.
 - Production và hệ thống thật chỉ được ĐỌC (GET). Không tạo, sửa, xoá.
 - Không in mật khẩu, token, khoá ra log, báo cáo hay file. Khi đọc secret chỉ in tên khoá và host:port.
 - Kiểm dung lượng đĩa trống trước khi build lớn. Thiếu đĩa: dừng và báo BLOCKED.
@@ -69,7 +70,10 @@ BÁO CÁO
 - Dòng đầu tiên là status token: DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT hoặc PROGRESS. Không dịch.
 - BLOCKED chỉ dùng cho thứ bạn không tự gỡ được: host/cụm/registry không tới được, thiếu quyền, thiếu công cụ. Test đỏ, lỗi biên dịch, phát hiện review là CÔNG VIỆC, không phải BLOCKED.
 - Gửi một dòng PROGRESS trước mọi bước kéo dài quá vài phút.
-- Mốc giờ (múi giờ <TZ>, giờ hiện tại <HH:MM>): PROGRESS lúc <HH:MM>, kết quả cuối lúc <HH:MM> (chưa xong vẫn gửi cái đã có), dọn dẹp lúc <HH:MM>.
+- DEADLINE (bắt buộc; múi giờ <TZ>, giờ hiện tại <HH:MM> lấy từ đồng hồ máy): PROGRESS lúc <HH:MM>, báo cáo cuối chậm nhất lúc <HH:MM>, dọn dẹp xong lúc <HH:MM>.
+- Hết deadline bạn PHẢI báo cáo, dù chưa xong: gửi cái đã có, đánh dấu DONE_WITH_CONCERNS (hoặc BLOCKED), liệt kê việc chưa làm. Im lặng quá deadline là vi phạm.
+- Kẹt trong một lệnh thì không chờ vô hạn: lệnh chạy quá 5 phút không có kết quả thì dừng nó, gửi PROGRESS và đi tiếp.
+- Cần thêm giờ: gửi PROGRESS xin gia hạn trước deadline và chờ parent trả lời. Không tự kéo dài.
 ```
 
 ### Khối ngôn ngữ (khối 3)
@@ -268,8 +272,8 @@ Dùng ở cuối đợt. Mẫu: [`mau/brief-verifier.md`](mau/brief-verifier.md)
 
 - [ ] Có đường dẫn tới gói thiết kế và mã `REQ` của phase (engine, qc).
 - [ ] Có commit SHA cụ thể cần chấm hoặc soát (reviewer).
-- [ ] Có mốc giờ lấy từ đồng hồ máy.
+- [ ] Có deadline: giờ tuyệt đối lấy từ đồng hồ máy (PROGRESS, báo cáo cuối, dọn dẹp) và câu "hết deadline phải báo cáo".
 - [ ] Có số ADR đã cấp, nếu engine có thể viết ADR (và số khác nhau nếu chạy song song).
 - [ ] Có đường dẫn thư mục build riêng.
-- [ ] Có câu nhắc `timeout`, `curl -m 10`, không in bí mật, không xoá ngoài phạm vi.
+- [ ] Có câu nhắc giới hạn giờ cho lệnh (`timeout`, hoặc `perl -e 'alarm …'` trên macOS), `curl -m 10`, không in bí mật, không xoá ngoài phạm vi.
 - [ ] Có khối ngôn ngữ ở cuối.

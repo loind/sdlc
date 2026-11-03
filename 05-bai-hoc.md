@@ -4,8 +4,8 @@ Mỗi bài rút từ một sự cố hoặc một lần review bắt lỗi thậ
 
 ## A. Điều phối
 
-1. **Mọi child chạy dài đều có mốc giờ, và giờ lấy từ đồng hồ máy.**
-   Không có mốc thì không ai biết child treo hay đang làm. Có lần orchestrator đoán giờ lệch hơn một tiếng và phải gửi lại brief.
+1. **Mọi task giao cho child có deadline cứng, và child bắt buộc báo cáo khi hết hạn.**
+   Deadline là giờ tuyệt đối lấy từ đồng hồ máy, có trong brief và trên board. Không có deadline thì không ai biết child treo hay đang làm. Có lần orchestrator đoán giờ lệch hơn một tiếng và phải gửi lại brief. Có lần brief không có deadline: một reviewer chạy mã cũ trên đầu vào lớn, tiến trình dùng 100% CPU suốt 70 phút và lệnh của reviewer chờ nó. Không ai biết cho đến khi người dùng hỏi.
 
 2. **Orchestrator không sửa mã, kể cả "chỉ một dòng fixture".**
    Nó chỉ merge, chạy gate, review, điều phối. Sửa "nhỏ" tự làm thì không qua review và là lý do người dùng phàn nàn. Tạo nhánh sửa cũng giao cho engine.
@@ -13,8 +13,8 @@ Mỗi bài rút từ một sự cố hoặc một lần review bắt lỗi thậ
 3. **Trước khi tiếp tục board, kiểm có orchestrator khác đang giữ nó.**
    Board không ghi ai đang ghi. Hai phiên cùng spawn engine cho một phase thì ghi đè worktree và dữ liệu golden của nhau. Thấy phiên khác đang chạy: chỉ báo, không ghi.
 
-4. **Không bao giờ tắt watchdog khi còn child `running`.**
-   Child trông treo có thể kẹt trong một lệnh và không đọc được tin nhắc. Xem CPU của kernel child, SIGTERM nó, nó thường tỉnh lại và gửi kết quả.
+4. **Heartbeat chạy mỗi 5 phút từ lúc khởi tạo orchestrator đến khi không còn child `running`. Không tắt sớm.**
+   Child trông treo có thể kẹt trong một lệnh và không đọc được tin nhắc. Xem CPU của kernel child, SIGTERM nó, nó thường tỉnh lại và gửi kết quả. Tiến trình dùng từ 90% CPU trong hơn 5 phút là dấu hiệu treo.
 
 5. **Child thoát rỗng ngay lập tức = nhà cung cấp model có vấn đề, không phải lỗi của brief.**
    Kiểm bằng lệnh gọi trực tiếp (`curl -m 10`) trước khi spawn lại. Nguyên nhân gặp: mất mạng tới nhà cung cấp, cài đặt riêng tư của model bị chặn.

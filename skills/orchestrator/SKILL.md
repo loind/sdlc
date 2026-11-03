@@ -73,6 +73,55 @@ dispatching phase 1. Three outcomes:
 
 If the tests cannot run without something deployed, see **When tests need a deployed environment**.
 
+## Heartbeat and deadlines
+
+A child that goes quiet is the failure this section exists to prevent. Two rules, both mandatory.
+
+**1. Every task carries a hard deadline.** Take the time from the machine clock (`datetime.now()`),
+then give the child three absolute times in the brief: a `PROGRESS:` line, the final report, and
+cleanup. Record them on the board (`b["deadlines"][child_name] = "HH:MM"`). Suggested budgets, tune
+per repo: engine 45 min per phase, qc and code-reviewer 20 min per round, devops 20, verifier 30,
+documenter 20.
+
+- At the deadline the child MUST report: `DONE` if finished; otherwise send what it has as
+  `DONE_WITH_CONCERNS` (or `BLOCKED`) plus the list of what is not done. Silence past the
+  deadline is a violation, not progress.
+- A child that needs more time sends `PROGRESS:` asking for it before the deadline and waits for
+  the parent's reply. It never extends itself.
+- Every command that may run long is bounded: `timeout <s>`, or on macOS (no `timeout`)
+  `perl -e 'alarm <s>; exec @ARGV' <cmd>`. When a reviewer runs OLD code on big input for an A/B
+  check, it picks a size where the old code finishes in a few seconds.
+
+**2. A heartbeat checks every child every 5 minutes**, from init until the last child has
+reported. Use the agent-internal `rlm-heartbeat` skill (not the user's `/heartbeat`). Start it at
+init, before dispatching phase 1, and keep its id on the board:
+
+```python
+hb = await rlm_heartbeat.create(WATCH_INSTRUCTION, interval="5m",
+                                label="orchestration-watch", delivery_mode="follow_up")
+b["heartbeat"] = hb["heartbeat"]["id"]
+bd.save(b)
+```
+
+`WATCH_INSTRUCTION` tells each heartbeat turn to: read the board; for every child dispatched and
+not finally reported, call `agent_observe.get_agent` and `recent_messages` and compare the age of
+its last message with its deadline; list processes at >= 90% CPU for more than 5 minutes
+(`ps -Ao pid,etime,pcpu,command`). The ladder:
+
+1. A runaway process of the child: kill the process (not the child), tell the child what was
+   killed and why, and remind it to bound its commands.
+2. Past the deadline, or silent for more than 10 minutes: send ONE message asking for a report now.
+3. Still silent at the next heartbeat: `bd.block(...)` the phase and tell the user. Do not delete
+   the child before telling the user.
+
+The heartbeat stays silent when nothing changed. Stop it only when every phase is `done` and no
+child is `running` - devops, verifier and documenter are children too, so it outlives the last
+phase:
+
+```python
+await rlm_heartbeat.delete(b["heartbeat"])
+```
+
 ## Board
 
 `scripts/board.py` owns the board at `.prime/orchestrator/board.json`. You are its only
@@ -300,7 +349,8 @@ line, not a running commentary.
 
 ### Watching for silence
 
-A `BLOCKED` message can never arrive if the child died or hung. Once per turn, for every child
+A `BLOCKED` message can never arrive if the child died or hung. On every heartbeat (see
+**Heartbeat and deadlines**) and once per turn, for every child
 you dispatched and have not heard from, check it:
 
 ```python
@@ -331,13 +381,15 @@ the board says done, nothing else does.
      phase stays in `review`.
 5. Any child reporting `BLOCKED` -> `bd.block(b, id, reason)`, save, report to the user with
    the command and error. A phase stays parked until the blocker is gone, then `bd.unblock`.
-6. Every turn, check each dispatched child you have not heard from (see **Watching for
-   silence**). Idle and silent is treated as blocked, not as done.
+6. Every turn, and on every 5-minute heartbeat, check each dispatched child you have not heard
+   from (see **Heartbeat and deadlines** and **Watching for silence**). Idle and silent, or past
+   its deadline and silent, is treated as blocked, not as done.
 7. A gate command that fails because the environment is unreachable is a blocker, not a
    rework: `bd.block(...)` instead of sending the engine back to fix something it did not break.
 8. Every phase `done` -> dispatch `devops`. It reports -> dispatch `verifier`. Sequential, not
    parallel: there is nothing to verify until the deploy finished.
-   - `verifier` replies `PASS` -> dispatch `documenter`, then report the run to the user and stop.
+   - `verifier` replies `PASS` -> dispatch `documenter`. When it has reported and no child is
+     `running`, delete the heartbeat, report the run to the user and stop.
    - `verifier` has blocking findings -> they are a **new phase**, not a rework of an old one:
      `bd.add_phase(b, "fix: <finding>", req_ids=[...], acceptance=[...])` and go to 1. A phase
      that already passed its gate stays done; reopening it loses the record of what shipped.

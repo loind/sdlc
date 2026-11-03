@@ -60,11 +60,12 @@ stateDiagram-v2
 ### Bước 2 - Khởi tạo orchestrator
 
 - **Việc:** copy từng `## Phase N` lên board (`board.add_phase`). Kiểm `board.uncovered` rỗng. Chạy gate chung **một lần trên cây sạch**. Chọn model theo vai và ghi vào board.
+- **Bật heartbeat watchdog 5 phút/lần** trước khi giao phase đầu tiên (xem mục [Deadline và watchdog](#deadline-và-watchdog)). Ghi id heartbeat vào board.
 - **Kết quả gate chung:**
   - Xanh: đi tiếp.
   - Đỏ vì mã: repo hỏng từ trước. Báo người dùng. Không giao engine sửa thứ chưa ai yêu cầu.
   - Không chạy được (thiếu công cụ, thiếu quyền, không tới được host): chặn cả đợt. Báo lệnh và lỗi, dừng.
-- **DoD:** board có đủ phase, mỗi phase có `req_ids`, `acceptance`, gate. Gate chung đã chạy.
+- **DoD:** board có đủ phase, mỗi phase có `req_ids`, `acceptance`, gate. Gate chung đã chạy. Heartbeat đã bật.
 
 ### Bước 3 - Lặp cho từng phase
 
@@ -125,6 +126,7 @@ sequenceDiagram
 
 - **Việc:** cập nhật `docs/design/<slug>/` và tài liệu sống của repo cho khớp **cái đã ship**. Không viết lại lịch sử: ghi cái gì đổi và vì sao. Không bịa tài liệu cho thứ chưa ai làm.
 - **DoD:** cổng tài liệu (`scripts/check-docs.sh`) xanh. Diff tài liệu được review (xem bài học về tài liệu gọn ở [`05`](05-bai-hoc.md)).
+- **Tắt heartbeat** khi documenter đã báo xong, mọi phase đã `done` và không còn child nào `running`. Devops, verifier và documenter cũng là child, nên heartbeat chạy đến lúc này, không dừng ngay sau phase cuối.
 
 ### Bước 7 - Vào develop và phát hành
 
@@ -152,15 +154,29 @@ Board là bản đầy đủ. Ticket là bản trace công khai. Orchestrator gh
 
 ## Deadline và watchdog
 
-Child chạy dài mà không có mốc giờ thì không ai biết nó treo hay đang làm.
+Child chạy mà không có hạn thì không ai biết nó treo hay đang làm. Hai thứ đi cùng nhau: **mọi task có deadline**, và **một heartbeat kiểm từng child mỗi 5 phút**.
 
-- **Mọi brief cho child chạy lâu có mốc giờ:** PROGRESS giữa chừng, kết quả cuối (chưa xong vẫn gửi cái đã có), dọn dẹp.
-- **Lấy giờ bằng đồng hồ máy** (`datetime.now()`) trước khi đặt mốc. Đã có lần đoán giờ lệch hơn một tiếng và phải gửi lại brief.
-- **Brief bắt buộc ba điều:** bọc mọi lệnh có thể treo bằng `timeout <giây>`; chạy service trong container bằng `docker run -d`; chạy `curl -m 10`.
-- **Watchdog** (heartbeat 30 phút):
-  - child đang chạy mà im hơn 15 phút: gửi MỘT tin nhắc ("bọc lệnh dài bằng `timeout` hoặc báo trạng thái").
-  - im hơn 60 phút: chỉ báo người dùng.
-  - Không xoá child. Không tắt watchdog khi còn child đang `running`, dù child đó trông đã treo.
+### Deadline
+
+- **Không brief nào đi mà thiếu deadline.** Gồm cả reviewer, verifier, documenter, không chỉ engine.
+- **Deadline là giờ tuyệt đối, lấy bằng đồng hồ máy** (`datetime.now()`) trước khi đặt. Đã có lần đoán giờ lệch hơn một tiếng và phải gửi lại brief. Ba mốc: PROGRESS giữa chừng, báo cáo cuối chậm nhất, dọn dẹp xong.
+- **Hạn gợi ý** (chỉnh theo dự án): engine 45 phút mỗi phase. qc và code-review 20 phút mỗi vòng. devops 20, verifier 30, documenter 20. Việc dài hơn: chia nhỏ, hoặc đặt mốc PROGRESS dày hơn.
+- **Hết deadline, child bắt buộc báo cáo.** Xong thì `DONE`. Chưa xong thì gửi **cái đã có** với `DONE_WITH_CONCERNS` (hoặc `BLOCKED` nếu bị chặn), kèm danh sách việc chưa làm. Im lặng quá deadline là vi phạm, không phải "đang làm".
+- **Gia hạn chỉ bằng tin của orchestrator.** Child cần thêm giờ thì gửi `PROGRESS` xin gia hạn trước deadline, rồi chờ trả lời. Không tự kéo dài.
+- **Ghi deadline của từng child lên board**, để heartbeat đối chiếu.
+- **Bọc mọi lệnh có thể chạy lâu bằng giới hạn giờ.** macOS không có `timeout`: dùng `perl -e 'alarm 60; exec @ARGV' <lệnh>`. Khi chạy mã cũ trên đầu vào lớn để so A/B, chọn cỡ đầu vào sao cho mã cũ xong trong vài giây. Thêm: service trong container chạy bằng `docker run -d`, và `curl -m 10`.
+
+### Heartbeat watchdog
+
+- **Bật** ở Bước 2, trước khi giao phase đầu tiên. **Tắt** ở Bước 6, khi mọi phase đã `done` và không còn child nào `running`.
+- **Chu kỳ 5 phút**, chờ lượt hiện tại của orchestrator xong rồi mới chạy (không ngắt giữa chừng).
+- **Mỗi lần chạy, với từng child đã giao mà chưa báo cáo cuối:** xem trạng thái, số tin nhắn, tuổi của tin cuối; so với deadline trên board; xem tiến trình dùng nhiều CPU (`ps -Ao pid,etime,pcpu,command`).
+- **Thang xử lý:**
+  1. Tiến trình của child dùng ≥ 90% CPU hơn 5 phút: kill **tiến trình đó** (không kill child), báo child đã kill gì và vì sao, nhắc bọc lệnh bằng giới hạn giờ.
+  2. Quá deadline, hoặc im hơn 10 phút: gửi MỘT tin yêu cầu báo cáo ngay, kèm cái đã có.
+  3. Lần heartbeat kế tiếp vẫn im: `board.block` phase và báo người dùng. Không xoá child khi chưa báo người dùng.
+- **Im lặng khi không có gì thay đổi.** Chỉ báo người dùng khi có thay đổi hoặc có child treo.
+- **Không tắt heartbeat khi còn child `running`**, dù child đó trông đã treo (bài 4 ở [`05`](05-bai-hoc.md)).
 - **Child treo trong lệnh:** xem CPU của kernel child (`ps -Ao pid,etime,pcpu,command`), nối tiến trình với worktree của nó (`lsof -p <pid> | grep cwd`), loại tiến trình của chính mình. SIGINT thường bị bỏ qua, SIGTERM trên kernel của child thường đưa nó về trạng thái rỗi và nó gửi nốt kết quả.
 - **Child báo rỗng ngay lập tức** (`no-reply`): thường là nhà cung cấp model không tới được. Chạy `curl -m 10` tới nhà cung cấp trước khi spawn lại. Không spawn lại mù trên cùng nhà cung cấp.
 

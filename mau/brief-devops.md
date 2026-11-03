@@ -20,7 +20,7 @@ BẮT BUỘC TRƯỚC KHI LÀM
 - Tiếng Việt có dấu, câu ngắn.
 
 AN TOÀN
-- Bọc mọi lệnh có thể treo bằng `timeout <giây>`. `curl` luôn có `-m 10`. Service chạy bằng `docker run -d`.
+- Bọc mọi lệnh có thể treo bằng giới hạn giờ: `timeout <giây>` (macOS không có `timeout`: dùng `perl -e 'alarm <giây>; exec @ARGV' <lệnh>`). `curl` luôn có `-m 10`. Service chạy bằng `docker run -d`.
 - Production và hệ thống thật chỉ được ĐỌC (GET). Không tạo, sửa, xoá.
 - Không in mật khẩu, token, khoá ra log, báo cáo hay file. Khi đọc secret chỉ in tên khoá và host:port.
 - Kiểm dung lượng đĩa trống trước khi build lớn. Thiếu đĩa: dừng và báo BLOCKED.
@@ -31,7 +31,10 @@ BÁO CÁO
 - Dòng đầu tiên là status token: DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT hoặc PROGRESS. Không dịch.
 - BLOCKED chỉ dùng cho thứ bạn không tự gỡ được: host/cụm/registry không tới được, thiếu quyền, thiếu công cụ. Test đỏ, lỗi biên dịch, phát hiện review là CÔNG VIỆC, không phải BLOCKED.
 - Gửi một dòng PROGRESS trước mọi bước kéo dài quá vài phút.
-- Mốc giờ (múi giờ <TZ>, giờ hiện tại <HH:MM>): PROGRESS lúc <HH:MM>, kết quả cuối lúc <HH:MM> (chưa xong vẫn gửi cái đã có), dọn dẹp lúc <HH:MM>.
+- DEADLINE (bắt buộc; múi giờ <TZ>, giờ hiện tại <HH:MM> lấy từ đồng hồ máy): PROGRESS lúc <HH:MM>, báo cáo cuối chậm nhất lúc <HH:MM>, dọn dẹp xong lúc <HH:MM>.
+- Hết deadline bạn PHẢI báo cáo, dù chưa xong: gửi cái đã có, đánh dấu DONE_WITH_CONCERNS (hoặc BLOCKED), liệt kê việc chưa làm. Im lặng quá deadline là vi phạm.
+- Kẹt trong một lệnh thì không chờ vô hạn: lệnh chạy quá 5 phút không có kết quả thì dừng nó, gửi PROGRESS và đi tiếp.
+- Cần thêm giờ: gửi PROGRESS xin gia hạn trước deadline và chờ parent trả lời. Không tự kéo dài.
 
 ## 3. Khối ngôn ngữ (chép cho mọi vai)
 
