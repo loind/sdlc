@@ -5,6 +5,7 @@ Mỗi thư mục là một skill nguồn, **giữ nguyên nội dung gốc** (ti
 | Skill | Dùng ở bước | Một dòng |
 |---|---|---|
 | `thinker` | Thiết kế | Biến ý tưởng thô thành gói thiết kế (PRD, SRS, design, phases) mà orchestrator chạy được. |
+| `advisor` | Trong phase, trước khi engine phát triển | Chấm dự thảo theo đúng đầu mục engine đưa (điểm 0–5) và thêm tối đa ba gạch nâng cấp. Model `xai/grok-4.7`, thinking `xhigh`. |
 | `orchestrator` | Thực thi | Chạy gói thiết kế: engine, qc + code-review, gate, devops, verifier, documenter; ghi board (`scripts/board.py`). |
 | `grilling` | Thiết kế | Hỏi người dùng theo cây quyết định, từng vòng, kèm đáp án đề xuất. |
 | `ponytail-review` (5.1.0) | Review | Vai code-review trong quy trình dùng skill này. Review chất lượng đầy đủ theo thứ tự: đúng, an toàn, chịu tải, có test, nhanh, gọn. Đọc cả mã liên quan, không chỉ diff. |
@@ -24,3 +25,4 @@ Mỗi thư mục là một skill nguồn, **giữ nguyên nội dung gốc** (ti
 - `code-review` cần một issue tracker để lấy spec: nó đọc cấu hình tracker mà môi trường cung cấp. Nếu repo của bạn chưa có, bỏ bước đọc spec từ ticket. Trong quy trình này child code-review **không sinh child con**, nên vai code-review dùng `ponytail-review` chứ không chạy hai sub-agent của `code-review`. Trục Spec đã do `qc` chấm.
 - Skill `orchestrator` bản gốc bảo xoá child sau mỗi phase. Dự án gốc đổi luật này: **không xoá child** (xem `../01-quy-trinh.md`, mục "Quy tắc vận hành khác"). Chọn một cách và ghi vào quy tắc agent của bạn.
 - `thinker` khuyến nghị model mạnh nhất và thinking cao. Phần dễ hỏng nhất là cây quyết định và việc gọi tên vấn đề thiết kế.
+- `advisor` chỉ chấm đầu mục engineer đưa. Điểm không đóng phase. Spawn `xai/grok-4.7` thinking `xhigh`; host từ chối `xhigh` thì `BLOCKED`, không hạ model.

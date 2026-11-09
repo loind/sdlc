@@ -17,6 +17,7 @@
 | **thinker** (kỹ năng của phiên chính) | Model mạnh, thinking cao | model mạnh của phiên chính | Hỏi người dùng, đọc repo, viết gói thiết kế | `prd.md`, `srs.md`, `design.md`, `phases.md` |
 | **builder check** (sub-agent của thinker) | Model mạnh, ngữ cảnh mới | chưa dùng ở dự án gốc (thêm sau) | Đọc gói thiết kế như kỹ sư phải build theo nó mà không được hỏi người dùng. Chỉ báo chỗ phải đoán, xếp theo mức quan trọng. Chạy một vòng | Danh sách câu hỏi kèm file và mục, hoặc "nothing important left" |
 | **engine** | Model nhanh, rẻ, viết mã tốt | một model "flash" của nhà cung cấp thứ ba | Làm đúng một phase: test đỏ, mã, chạy test | Commit trên nhánh feature, báo cáo `DONE` kèm SHA |
+| **advisor** | `xai/grok-4.7`, thinking `xhigh` | grok-4.7 | Chấm dự thảo theo đúng đầu mục engine đưa; thêm tối đa ba gạch nâng cấp | `## Comments` điểm 0–5 + `## Nâng cấp` |
 | **qc** | Model mạnh, chạy được lệnh | Sonnet bản mới nhất | Chấm diff theo acceptance, từng `REQ`; tự kiểm bằng chương trình thật | `VERDICT: PASS/FAIL` + từng REQ |
 | **qc2** | Model KHÁC họ với qc, thinking cao | một model thuộc họ khác | Kiểm độc lập song song với qc | `VERDICT: PASS/FAIL` |
 | **code-review** | Model mạnh | Sonnet bản mới nhất | Review chất lượng 6 tiêu chí theo `ponytail-review` v5: đúng, an toàn, chịu tải, có test, nhanh, gọn | `VERDICT: APPROVE/REQUEST_CHANGES` + phát hiện có mức độ |
@@ -33,6 +34,7 @@
 
 ```text
 engine        -> engine-p<phase>              (dùng lại qua các vòng sửa, mới ở phase sau)
+advisor       -> advisor-p<phase>-r<vòng>    (tên mới mỗi vòng; model xai/grok-4.7, thinking xhigh)
 qc            -> qc-p<phase>-r<vòng>          (tên mới mỗi vòng, không dùng lại)
 qc2           -> qc2-p<phase>-r<vòng>
 code-review   -> code-review-p<phase>-r<vòng>
@@ -146,6 +148,38 @@ Báo cáo cuối (dòng đầu DONE hoặc DONE_WITH_CONCERNS):
 - Tóm tắt diff 3 dòng.
 - Ghi chú bàn giao: quyết định đã chọn, bẫy đã gặp, điều engine phase sau cần biết.
 - Điểm chưa chắc (nếu có).
+```
+
+### advisor
+
+```text
+Vai: advisor. CHẤM dự thảo theo đúng đầu mục engine đưa. Không sửa mã. Không commit. Không triển khai.
+
+Model: xai/grok-4.7. Thinking: xhigh. Nếu host từ chối xhigh: BLOCKED, không hạ thinking, không đổi model.
+
+Phase <id>. Dự thảo: <đường dẫn hoặc nội dung>.
+Đầu mục cần chấm (engine đưa, không tự thêm):
+- <đầu mục 1>
+- <đầu mục 2>
+Phạm vi được đọc: <path engineer cho phép, hoặc "chỉ nội dung dự thảo">.
+
+Việc làm:
+1. Đọc dự thảo. Chỉ dùng bằng chứng engineer đã đưa, trừ khi phạm vi được đọc nói khác.
+2. Mỗi đầu mục một comment: Điểm N/5, nhận xét một hoặc hai câu, dòng Thiếu hoặc `không`.
+3. Thêm khối Nâng cấp: tối đa ba gạch, mỗi gạch một câu. Không có thì ghi không có việc nâng cấp ngoài các đầu mục đã chấm.
+
+Thang 0–5: 0 sai; 1 thiếu bằng chứng; 2 làm được một phần và lỗ chặn hướng; 3 đủ đi tiếp còn một lỗ; 4 đúng, chỉ còn nit; 5 đúng và đủ bằng chứng.
+Điểm không phải lệnh sửa và không đóng phase. Engine tự đánh giá rồi mới phát triển.
+
+Báo cáo (dòng đầu DONE):
+## Comments
+### <đúng tên đầu mục>
+- Điểm: N/5
+- Nhận xét: ...
+- Thiếu: ...
+
+## Nâng cấp
+- ...
 ```
 
 ### qc
@@ -271,6 +305,7 @@ Dùng ở cuối đợt. Mẫu: [`mau/brief-verifier.md`](mau/brief-verifier.md)
 ## Checklist trước khi gửi brief
 
 - [ ] Có đường dẫn tới gói thiết kế và mã `REQ` của phase (engine, qc).
+- [ ] Brief advisor có danh sách đầu mục engine đưa và model `xai/grok-4.7` thinking `xhigh`.
 - [ ] Có commit SHA cụ thể cần chấm hoặc soát (reviewer).
 - [ ] Có deadline: giờ tuyệt đối lấy từ đồng hồ máy (PROGRESS, báo cáo cuối, dọn dẹp) và câu "hết deadline phải báo cáo".
 - [ ] Có số ADR đã cấp, nếu engine có thể viết ADR (và số khác nhau nếu chạy song song).
