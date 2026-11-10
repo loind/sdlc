@@ -31,6 +31,33 @@ you the easier one twice.
 `devops` deploys, `verifier` judges. Never let one session do both - the session that deployed
 has a reason to call the deploy fine.
 
+## Async contract
+
+Everything between sessions is asynchronous. `await rlm.spawn(...)` returns a handle once the child
+is *admitted*; the child's answer never comes back as a return value. It arrives later as a message
+(`agent_message`) or as a file. A dispatch therefore always has the same four beats:
+
+1. `dispatch(...)` - hand the brief over, write child + deadline on the board, `bd.save(b)`.
+2. End your turn. Do not poll, sleep or `await` anything that waits for the child.
+3. Wait for the message. It is your next input.
+4. Read its first line (`DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_CONTEXT`), advance the board, save.
+
+Who can reach whom (`agent_message.send`: `receiver_role` is `parent`, `sibling` or `child`, and the
+last two need `receiver_name`):
+
+| From | To | Allowed |
+|---|---|---|
+| orchestrator | child | yes: briefs, rework, `NEEDS_CONTEXT` answers, report-now nudges |
+| child | parent | yes, and only this: PROGRESS lines and the final report |
+| child | sibling | no: qc and code-reviewer must not see each other's reply |
+| child | its own child | no: a child never spawns, so there are no grandchildren |
+
+Every brief carries `FRAME` (see Role briefs): the final report starts with one of four untranslated
+tokens; deadlines are absolute times from the machine clock; every command that can hang is bounded
+(`timeout` on Linux, `perl -e 'alarm <s>; exec @ARGV' <cmd>` on macOS) and `curl` always has `-m 10`;
+free disk is checked before a big build; a child deletes only the project's build cache and Docker
+images; secrets are never printed.
+
 ## Start: read the design package
 
 **No `phases.md` on disk means you stop.** Look for `docs/design/*/phases.md`; if the user named a
@@ -113,8 +140,8 @@ its last message with its deadline; list processes at >= 90% CPU for more than 5
 1. A runaway process of the child: kill the process (not the child), tell the child what was
    killed and why, and remind it to bound its commands.
 2. Past the deadline, or silent for more than 10 minutes: send ONE message asking for a report now.
-3. Still silent at the next heartbeat: `bd.block(...)` the phase and tell the user. Do not delete
-   the child before telling the user.
+3. Still silent at the next heartbeat: `bd.block(...)` the phase and tell the user. Never delete
+   the child: children are kept until the run ends.
 
 The heartbeat stays silent when nothing changed. Stop it only when every phase is `done` and no
 child is `running` - devops, verifier and documenter are children too, so it outlives the last
@@ -256,14 +283,11 @@ Children run the per-role model on the board (engine DeepSeek, documenter Gemini
 decisions live here: reading two reviewers' findings against each other, deciding rework vs
 done, deciding what a verifier finding becomes. A child works one scoped task with a clean context, which is where a fast model holds
 up. Leave the board's `models` per-role so one role can be raised later without touching
-this skill. Pass it on spawn:
+this skill. `dispatch` (see Resolve or spawn) passes it as `model=b["models"][role]`.
 
-```python
-await rlm(brief, name=role, model=b["models"][role], thinking="high")
-```
-
-`model` takes an exact `provider/model` selector, `thinking` defaults to the parent level and
-an invalid level for that model fails the spawn. Omit both to inherit the parent's.
+`model` takes an exact `provider/model` selector. `thinking` defaults to the parent level and an
+invalid level for that model fails the spawn, so `dispatch` leaves it out and every child
+inherits the parent's.
 
 ## Resolve or spawn
 
@@ -279,50 +303,74 @@ def child_name(role, phase):
 ```
 
 Then resolve-or-spawn is a plain lookup - a name that exists is reused, a name that does not
-is spawned:
+is spawned. `dispatch` is fire-and-forget: it records the child and its deadline, saves the board,
+and returns. It never waits for the child.
 
 ```python
+from datetime import timedelta
+import board as bd
+
+BUDGET_MIN = {"engine": 45, "qc": 20, "code-reviewer": 20, "devops": 20, "verifier": 30, "documenter": 20}
+
 async def dispatch(role, phase, brief, board):
     name = child_name(role, phase)
-    children = await rlm.list_subagents()
-    if any(c.session_name == name for c in children):
-        await agent_message.send(brief, receiver_role="child", receiver_name=name)
-        return name
-    await rlm(
-        f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{LANG}",   # LANG: xem Role briefs
-        name=name,
-        model=board.get("models", {}).get(role),
-    )
+    due = bd.set_deadline(board, name, BUDGET_MIN[role])        # absolute, from the machine clock
+    mid, tail = due - timedelta(minutes=BUDGET_MIN[role] / 2), due + timedelta(minutes=5)
+    frame = FRAME.format(tz=due.tzname(), progress=f"{mid:%H:%M}",     # FRAME, LANG: see Role briefs
+                         final=f"{due:%H:%M}", cleanup=f"{tail:%H:%M}")
+    if any(c.session_name == name for c in await rlm.list_subagents()):
+        await agent_message.send(f"{brief}\n\n{frame}", receiver_role="child", receiver_name=name)
+    else:
+        await rlm.spawn(f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{frame}\n\n{LANG}",
+                        name=name, model=board.get("models", {}).get(role))
     board.setdefault("agents", {})[role] = name
-    return name
+    bd.save(board)       # the board is the record, your context is not
+    return name          # no child answer exists yet: it arrives later as a message
 ```
 
-Once a phase is `done`, delete the children that served it so they stop accumulating - but
-only after `agent_observe.get_agent(name)` shows the child idle, because a delivered message
-may still be running:
+A reused child gets the new deadline in the same message, so the board and the child never disagree.
+`rlm.spawn(...)` returns a handle once the child is admitted, never its answer. After `dispatch`,
+**end your turn** and wait for the message. Do not poll, do not sleep, do not treat a return value as
+the child's result.
 
-```python
-await rlm.delete_subagent(child)
-```
-
-`rlm(...)` returns as soon as the child is admitted - it never returns the child's answer.
-Dispatch, write the board, end your turn. The child's reply arrives as a message later.
+**Keep every child until the run ends.** Do not call `rlm.delete_subagent` when a phase is `done`:
+the user wants to see every agent that took part, and the trace is in the verdict files and the
+ticket. Names are unique per phase and round, so idle children never collide.
 
 ## Role briefs
 
 Give each child only what its task needs, plus the reply contract. Every brief names
 `<design_dir>` so the child reads requirements from the package instead of from your paraphrase.
 
-Append this line to **every** brief - one place, so no role can be forgotten:
+Append `FRAME` and `LANG` to **every** brief - one place each, so no role can be forgotten.
+`dispatch` does it. `FRAME` is the shared safety and reporting contract; the deadline times in it
+come from the machine clock through `bd.set_deadline`:
 
 ```python
-LANG = ("Viet moi cau van xuoi bang tieng Viet co dau day du - bao cao, finding, handoff note, "
-        "ly do. Giu nguyen tieng Anh: status token (DONE, DONE_WITH_CONCERNS, BLOCKED, "
-        "NEEDS_CONTEXT, PROGRESS, PASS, FAIL), requirement id (REQ-xxx), duong dan file, lenh "
-        "shell, ten ham/bien, commit message, va thuat ngu ky thuat (cache, rollout, digest). "
-        "Khong dich status token - parent doc chung bang may.")
+FRAME = """\
+BẮT BUỘC TRƯỚC KHI LÀM
+- Đọc `CONTEXT.md`, mọi file trong `docs/adr/` và mục "Quy tắc cho agent" trong `CLAUDE.md` hoặc `AGENTS.md`. Việc được giao mâu thuẫn với một ADR: DỪNG, báo parent bằng NEEDS_CONTEXT.
 
-await rlm(f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{LANG}", name=name, model=...)
+AN TOÀN
+- Bọc mọi lệnh có thể treo bằng giới hạn giờ: Linux dùng `timeout <giây> <lệnh>`; macOS không có `timeout`, dùng `perl -e 'alarm <giây>; exec @ARGV' <lệnh>`. `curl` luôn có `-m 10`. Service chạy bằng `docker run -d`. Gate chạy qua `scripts/run-gate.sh` (script đã tự bọc giới hạn giờ).
+- Production và hệ thống thật chỉ được ĐỌC (GET). Không tạo, sửa, xoá.
+- Không in mật khẩu, token, khoá ra log, báo cáo hay file. Khi đọc secret chỉ in tên khoá và host:port.
+- Kiểm dung lượng đĩa trống trước khi build lớn. Thiếu đĩa: dừng và báo BLOCKED.
+- Chỉ được xoá cache build và image Docker của dự án này. Không xoá thứ gì khác. Báo cáo cuối liệt kê mọi thứ đã xoá.
+
+BÁO CÁO
+- Chỉ nhắn parent: `await agent_message.send(<tin>, receiver_role="parent")`. Không nhắn sibling (reviewer không được thấy nhau). KHÔNG sinh child con (không gọi `rlm.spawn`).
+- Báo cáo cuối có dòng đầu là MỘT trong 4 token: DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT. Không dịch. PROGRESS chỉ là tin giữa chừng, không thay báo cáo cuối. Gửi một dòng PROGRESS trước mọi bước kéo dài quá vài phút.
+- BLOCKED chỉ dùng cho thứ bạn không tự gỡ được: host, cụm, registry không tới được; thiếu quyền; thiếu công cụ. Test đỏ, lỗi biên dịch, phát hiện review là CÔNG VIỆC, không phải BLOCKED.
+- DEADLINE (giờ máy, múi giờ {tz}): PROGRESS lúc {progress}, báo cáo cuối chậm nhất lúc {final}, dọn dẹp xong lúc {cleanup}. Hết deadline bạn PHẢI báo cáo, dù chưa xong: gửi cái đã có với DONE_WITH_CONCERNS (hoặc BLOCKED) kèm việc chưa làm. Im lặng quá deadline là vi phạm. Cần thêm giờ: gửi PROGRESS xin gia hạn trước deadline và chờ parent trả lời, không tự kéo dài.
+- Kẹt trong một lệnh thì không chờ vô hạn: lệnh chạy quá 5 phút không có kết quả thì dừng nó, gửi PROGRESS và đi tiếp.
+"""
+
+LANG = ("Viết mọi câu văn xuôi bằng tiếng Việt có dấu đầy đủ: báo cáo, phát hiện, ghi chú bàn giao, "
+        "lý do. Giữ nguyên tiếng Anh: status token (DONE, DONE_WITH_CONCERNS, BLOCKED, "
+        "NEEDS_CONTEXT, PROGRESS, PASS, FAIL), mã yêu cầu (REQ-xxx), đường dẫn file, lệnh "
+        "shell, tên hàm/biến, commit message và thuật ngữ kỹ thuật (cache, rollout, digest). "
+        "Không dịch status token: parent đọc chúng bằng máy.")
 ```
 
 Dịch một status token là làm hỏng `advance()`: parent đọc chữ đầu dòng, không đọc ý.
@@ -440,8 +488,10 @@ each other's reply - two reviewers that agree because one read the other are one
 ## Limits
 
 - Results never come back as a return value. Everything is a message or a file on disk.
-- Reach is parent, siblings, and direct children only. Grandchildren relay through their parent.
-- Default recursion depth lets you create children; your children cannot create their own.
+- Reach is parent, siblings and direct children (see Async contract). Policy narrows it: a child
+  talks to its parent only.
+- Default recursion depth lets you create children; your children cannot create their own, so
+  grandchildren never exist.
 - `agent_observe` sees only family in the same worker. A root session in another worker can
   be messaged but not observed - prefer children you spawned for anything you must track.
 - Only create a persistent `goal` when the user explicitly asks for one.
