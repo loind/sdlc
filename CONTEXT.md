@@ -9,7 +9,7 @@ Phiên điều phối. Đọc gói thiết kế, giao việc, ghi board, chạy 
 _Tránh dùng_: manager, controller.
 
 **child**:
-Phiên con do orchestrator giao việc: engine, qc, qc2, code-review, documenter, research, devops, verifier. Giữ tới cuối run, không xoá sau phase (ADR-0001).
+Phiên con do orchestrator giao việc: engine, advisor, qc, qc2, code-review, documenter, research, devops, verifier. Giữ tới cuối run, không xoá sau phase (ADR-0001).
 _Tránh dùng_: worker, sub-agent.
 
 **phase**:

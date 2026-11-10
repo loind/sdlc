@@ -8,7 +8,7 @@ Thư mục này mô tả một quy trình phát triển phần mềm mà **agent
 
 1. Không viết mã khi chưa có **gói thiết kế** (PRD, SRS, design, phases) và người dùng đã duyệt.
 2. Mỗi phase có **mã yêu cầu** (`REQ-xxx`) và một **lệnh gate** chạy thật. Reviewer nói PASS không đủ để đóng phase. Chỉ lệnh gate xanh mới đóng được.
-3. Người **viết mã** và người **kiểm** là các phiên agent khác nhau, mỗi phiên bắt đầu với ngữ cảnh sạch.
+3. Người **viết mã** và người **kiểm** là các phiên agent khác nhau, mỗi phiên bắt đầu với ngữ cảnh sạch. Trước khi phát triển, engine gửi dự thảo cho **advisor** chấm đúng đầu mục; engine tự đánh giá điểm rồi mới viết tiếp.
 4. **Orchestrator** (agent điều phối) không tự sửa mã. Nó chỉ giao việc, merge, chạy gate, deploy và ghi sổ.
 5. Mọi mốc đều ghi vào **ticket** và **board**. Ai đến sau cũng trace lại được.
 6. Tài liệu nằm trong repo, có cổng kiểm tự động, và cập nhật cùng commit với mã.
@@ -25,7 +25,9 @@ flowchart TD
   C --> P
   subgraph P["Lặp cho từng phase"]
     direction TB
-    E["engine<br/>test đỏ trước, viết mã,<br/>chạy test"] --> R
+    E["engine<br/>kiểm code, viết dự thảo"] --> AD["advisor<br/>chấm đúng đầu mục<br/>grok-4.7 thinking xhigh"]
+    AD --> E2["engine đánh giá điểm<br/>rồi phát triển theo hướng đó"]
+    E2 --> R
     subgraph R["Kiểm song song, ngữ cảnh sạch"]
       direction LR
       QC["qc<br/>chấm theo acceptance"]

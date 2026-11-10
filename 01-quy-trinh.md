@@ -73,9 +73,14 @@ stateDiagram-v2
 sequenceDiagram
   participant O as orchestrator
   participant E as engine
+  participant A as advisor
   participant Q as qc / qc2
   participant C as code-review
   O->>E: brief + deadline (phase N)
+  E-->>O: dự thảo + đầu mục cần chấm
+  O->>A: brief advisor, grok-4.7 thinking xhigh
+  A-->>O: comment điểm theo đầu mục + nâng cấp ngắn
+  O->>E: gửi điểm, engine tự đánh giá rồi phát triển
   E-->>O: DONE + SHA + gate + điểm chưa chắc
   par kiểm song song, không thấy nhau
     O->>Q: brief qc + commit SHA
@@ -94,14 +99,16 @@ sequenceDiagram
   end
 ```
 
-1. **engine** làm đúng một phase: lập kế hoạch ngắn, viết test đỏ trước, viết mã, chạy toàn bộ test. Commit sớm, từng bước nhỏ, trên nhánh feature. Không `push`.
-2. **qc** chấm diff **theo acceptance của phase**, từng `REQ` một: PASS hoặc FAIL kèm thứ còn thiếu. Dùng đúng phương pháp kiểm ghi trong SRS. Không kiểm được thì là FAIL, không phải PASS.
-3. **qc2** (nếu dùng) chấm cùng brief nhưng model khác, độc lập. Mục đích: bắt thứ qc bỏ sót (nhánh lỗi, dữ liệu biên, lộ bí mật).
-4. **code-review** đọc và áp dụng skill `ponytail-review` (v5). Đây là review **chất lượng đầy đủ**, không chỉ tìm mã thừa. Thứ tự quan trọng: **đúng, an toàn, chịu tải, có test, nhanh, gọn** (xoá hơn thêm). Reviewer đọc **cả mã liên quan** (nơi gọi hàm đã đổi, hàm được gọi, test, README), không chỉ diff, và ước tải mong đợi từ repo. Không chấm requirement (việc của qc). Trả `APPROVE` hoặc `REQUEST_CHANGES`. Mỗi phát hiện có mức độ (`BLOCKER`, `MAJOR`, `MINOR`, `NIT`), `file:dòng`, ca cụ thể làm hỏng, cách sửa nhỏ nhất và hậu quả nếu bỏ qua. Chi tiết ở [`02`](02-vai-tro-va-brief.md#code-review).
-5. Orchestrator **chờ đủ** các reviewer rồi mới quyết. Mới có một phản hồi chưa phải verdict.
-6. Quy tắc gộp: **FAIL hoặc REQUEST_CHANGES của bất kỳ ai** là một vòng sửa. Khác biệt giữa các reviewer ghi vào báo cáo (đó là dữ liệu để chọn lại model).
-7. Tất cả PASS: orchestrator tự chạy gate (chung trước, riêng sau, lệnh rẻ nhất trước, dừng ở lệnh đỏ đầu tiên).
-8. Gate đỏ là việc của engine, không phải phát hiện của reviewer. Gửi lệnh và output cho engine. Phase ở lại `review`.
+1. **engine** kiểm code của phase và viết **dự thảo**: kế hoạch ngắn, đầu mục cần chấm, bằng chứng đã đọc. Chưa coi phase là xong.
+2. **advisor** chỉ chấm đúng các đầu mục engine đưa, điểm 0–5 kèm nhận xét, rồi tối đa ba gạch nâng cấp ngắn. Model `xai/grok-4.7`, thinking `xhigh`. Không sửa mã, không thêm đầu mục. Điểm advisor **không** đóng phase và **không** tự thành vòng sửa: orchestrator gửi điểm về engine.
+3. **engine** đọc điểm, ghi hướng đã chọn (kể cả chỗ không theo advisor, kèm lý do), rồi mới phát triển: test đỏ trước, viết mã, chạy test. Commit sớm, từng bước nhỏ, trên nhánh feature. Không `push`. Vòng sửa sau qc hoặc code-review không bắt buộc gửi advisor lại, trừ khi engine viết dự thảo mới.
+4. **qc** chấm diff **theo acceptance của phase**, từng `REQ` một: PASS hoặc FAIL kèm thứ còn thiếu. Dùng đúng phương pháp kiểm ghi trong SRS. Không kiểm được thì là FAIL, không phải PASS.
+5. **qc2** (nếu dùng) chấm cùng brief nhưng model khác, độc lập. Mục đích: bắt thứ qc bỏ sót (nhánh lỗi, dữ liệu biên, lộ bí mật).
+6. **code-review** đọc và áp dụng skill `ponytail-review` (v5). Đây là review **chất lượng đầy đủ**, không chỉ tìm mã thừa. Thứ tự quan trọng: **đúng, an toàn, chịu tải, có test, nhanh, gọn** (xoá hơn thêm). Reviewer đọc **cả mã liên quan** (nơi gọi hàm đã đổi, hàm được gọi, test, README), không chỉ diff, và ước tải mong đợi từ repo. Không chấm requirement (việc của qc). Trả `APPROVE` hoặc `REQUEST_CHANGES`. Mỗi phát hiện có mức độ (`BLOCKER`, `MAJOR`, `MINOR`, `NIT`), `file:dòng`, ca cụ thể làm hỏng, cách sửa nhỏ nhất và hậu quả nếu bỏ qua. Chi tiết ở [`02`](02-vai-tro-va-brief.md#code-review).
+7. Orchestrator **chờ đủ** các reviewer rồi mới quyết. Mới có một phản hồi chưa phải verdict.
+8. Quy tắc gộp: **FAIL hoặc REQUEST_CHANGES của bất kỳ ai** là một vòng sửa. Khác biệt giữa các reviewer ghi vào báo cáo (đó là dữ liệu để chọn lại model).
+9. Tất cả PASS: orchestrator tự chạy gate (chung trước, riêng sau, lệnh rẻ nhất trước, dừng ở lệnh đỏ đầu tiên).
+10. Gate đỏ là việc của engine, không phải phát hiện của reviewer. Gửi lệnh và output cho engine. Phase ở lại `review`.
 
 **DoD của phase:** mọi reviewer PASS **và** mọi lệnh gate thoát 0 **và** các lệnh đó do orchestrator chạy, ghi vào board bằng `advance(..., gate=results)`.
 
