@@ -79,7 +79,9 @@ A child that goes quiet is the failure this section exists to prevent. Two rules
 
 **1. Every task carries a hard deadline.** Take the time from the machine clock (`datetime.now()`),
 then give the child three absolute times in the brief: a `PROGRESS:` line, the final report, and
-cleanup. Record them on the board (`b["deadlines"][child_name] = "HH:MM"`). Suggested budgets, tune
+cleanup. Record the final-report deadline with `bd.set_deadline(b, child_name, minutes)` (it reads the machine
+clock and returns the datetime to print as HH:MM in the brief); `bd.clear_deadline(b, child_name)` when
+that child's final report arrives, and `bd.overdue(b)` lists the late ones. Suggested budgets, tune
 per repo: engine 45 min per phase, qc and code-reviewer 20 min per round, devops 20, verifier 30,
 documenter 20.
 
@@ -99,7 +101,7 @@ init, before dispatching phase 1, and keep its id on the board:
 ```python
 hb = await rlm_heartbeat.create(WATCH_INSTRUCTION, interval="5m",
                                 label="orchestration-watch", delivery_mode="follow_up")
-b["heartbeat"] = hb["heartbeat"]["id"]
+bd.set_heartbeat(b, hb["heartbeat"]["id"])
 bd.save(b)
 ```
 
@@ -119,7 +121,8 @@ child is `running` - devops, verifier and documenter are children too, so it out
 phase:
 
 ```python
-await rlm_heartbeat.delete(b["heartbeat"])
+await rlm_heartbeat.delete(bd.clear_heartbeat(b))   # refuses while a phase is open or a child owes a report
+bd.save(b)
 ```
 
 ## Board
@@ -152,6 +155,12 @@ Save after every transition - the board is the record, your context is not.
 `bd.block(b, id, reason)` parks a phase that cannot proceed and remembers where it was;
 `bd.unblock(b, id)` returns it there. `advance` refuses a blocked phase, so a parked phase
 cannot be closed by accident while the blocker is still there.
+
+The board carries `schema_version`: `load()` backfills keys an older board lacks and refuses a board
+written by a newer `board.py`. `save()` is atomic (tmp file, then rename), so a heartbeat reading the
+board never sees half a write. `bd.next_adr(b)` hands out the next ADR number and never reuses one the
+board issued or `docs/adr/` already holds: give each brief a different number and `bd.save(b)` at once
+to reserve it.
 
 ## Gate
 

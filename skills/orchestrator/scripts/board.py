@@ -1,27 +1,50 @@
 """Task board for the orchestrator skill. Single writer: the orchestrator session."""
 
 import json
-from datetime import datetime, timezone
+import os
+import re
+import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-BOARD = Path(".prime/orchestrator/board.json")
+BOARD = Path(".prime/orchestrator/board.json")  # the one and only board path
 FLOW = {"pending": "engine", "engine": "review", "review": "done"}
 LOG_KEEP = 200  # ponytail: flat list, move to a rotating file if a run outgrows it
+SCHEMA_VERSION = 1  # bump when a key changes meaning; load() refuses a board newer than this code
+
+
+def _new():
+    return {"schema_version": SCHEMA_VERSION, "goal": "", "design_dir": "", "gate": [],
+            "phases": [], "agents": {}, "models": {}, "deadlines": {}, "heartbeat": "",
+            "adr_seq": 0, "log": []}
 
 
 def load(path=BOARD):
     p = Path(path)
     if not p.exists():
-        return {"goal": "", "design_dir": "", "gate": [], "phases": [],
-                "agents": {}, "models": {}, "log": []}
-    return json.loads(p.read_text())
+        return _new()
+    b = json.loads(p.read_text(encoding="utf-8"))
+    v = b.get("schema_version", 0)  # a board written before versioning has none
+    assert v <= SCHEMA_VERSION, f"{p}: schema_version {v} is newer than board.py ({SCHEMA_VERSION})"
+    for key, default in _new().items():
+        b.setdefault(key, default)
+    b["schema_version"] = SCHEMA_VERSION
+    return b
 
 
 def save(board, path=BOARD):
+    """Atomic: write a tmp file next to the board, then rename over it, so a crash mid-write
+    (or a heartbeat reading at that moment) sees the old board or the new one, never half."""
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
+    board.setdefault("schema_version", SCHEMA_VERSION)
     board["log"] = board.get("log", [])[-LOG_KEEP:]
-    p.write_text(json.dumps(board, indent=2, ensure_ascii=False))
+    tmp = p.with_name(p.name + ".tmp")  # same directory, so os.replace is a rename, not a copy
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(json.dumps(board, indent=2, ensure_ascii=False))
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, p)
     return p
 
 
@@ -119,12 +142,131 @@ def next_phase(board):
     return next((p for p in board.get("phases", []) if p["status"] != "done"), None)
 
 
+def set_deadline(board, child, minutes, now=None):
+    """Final-report deadline for a child: absolute, from the machine clock, never a guess.
+
+    Returns the datetime so the caller can print HH:MM for the brief's three milestones.
+    """
+    due = (now or datetime.now().astimezone()) + timedelta(minutes=minutes)
+    board.setdefault("deadlines", {})[child] = due.isoformat(timespec="seconds")
+    log(board, f"deadline {child}: {board['deadlines'][child]}")
+    return due
+
+
+def clear_deadline(board, child):
+    """Call when the child's FINAL report arrives. The heartbeat watches whatever is left."""
+    board.get("deadlines", {}).pop(child, None)
+
+
+def overdue(board, now=None):
+    """Children past their deadline that have not reported: step 2 of the heartbeat ladder."""
+    now = now or datetime.now().astimezone()
+    return [c for c, d in board.get("deadlines", {}).items() if datetime.fromisoformat(d) < now]
+
+
+def set_heartbeat(board, hb_id):
+    """Record the id of the one watchdog. Start it at init, before dispatching phase 1."""
+    assert not board.get("heartbeat"), f"heartbeat already running: {board['heartbeat']}"
+    board["heartbeat"] = hb_id
+    log(board, f"heartbeat started: {hb_id}")
+
+
+def clear_heartbeat(board):
+    """Return the id to delete. Refuses while a phase is open or a child still owes a report."""
+    assert board.get("heartbeat"), "no heartbeat to stop"
+    assert next_phase(board) is None, "a phase is not done yet"
+    assert not board.get("deadlines"), f"children still running: {sorted(board['deadlines'])}"
+    hb, board["heartbeat"] = board["heartbeat"], ""
+    log(board, f"heartbeat stopped: {hb}")
+    return hb
+
+
+def next_adr(board, adr_dir="docs/adr"):
+    """Next ADR number, handed to ONE brief. Monotonic: never reuses a number the board already
+    issued or a file in adr_dir already has, so parallel engines cannot both create 0019-*.
+    The number is only reserved once the caller saves the board.
+    """
+    on_disk = max((int(m.group(1)) for f in Path(adr_dir).glob("*.md")
+                   if (m := re.match(r"(\d{4})-", f.name))), default=0)
+    board["adr_seq"] = max(board.get("adr_seq", 0), on_disk) + 1
+    return f"{board['adr_seq']:04d}"
+
+
 def _rejects(fn, *args, **kwargs):
     try:
         fn(*args, **kwargs)
     except AssertionError:
         return True
     return False
+
+
+def _demo_storage():
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "orchestrator" / "board.json"
+        b = load(p)
+        assert b["schema_version"] == SCHEMA_VERSION and b["deadlines"] == {} and b["adr_seq"] == 0
+        b["goal"] = "Gateway giới hạn tốc độ"
+        save(b, p)
+        assert not p.with_name("board.json.tmp").exists(), "save must leave no tmp file behind"
+        assert load(p)["goal"] == b["goal"], "utf-8 must round-trip"
+
+        before, real_replace = p.read_text(encoding="utf-8"), os.replace
+        def boom(*_):
+            raise OSError("disk full")
+        os.replace = boom
+        try:
+            b["goal"] = "half written"
+            save(b, p)
+            raise AssertionError("save must propagate a failed rename")
+        except OSError:
+            pass
+        finally:
+            os.replace = real_replace
+        assert p.read_text(encoding="utf-8") == before, "a failed save must leave the old board intact"
+
+        old = Path(d) / "old.json"
+        old.write_text(json.dumps({"goal": "old", "phases": []}))
+        legacy = load(old)
+        assert legacy["schema_version"] == SCHEMA_VERSION and legacy["adr_seq"] == 0, \
+            "a board without schema_version must be backfilled"
+        newer = Path(d) / "newer.json"
+        newer.write_text(json.dumps({"schema_version": SCHEMA_VERSION + 1}))
+        assert _rejects(load, newer), "a board from a newer board.py must be refused"
+
+        b = {"log": [{"event": i} for i in range(LOG_KEEP + 50)]}
+        save(b, p)
+        assert len(load(p)["log"]) == LOG_KEEP and load(p)["log"][-1]["event"] == LOG_KEEP + 49
+
+
+def _demo_ops():
+    b = _new()
+    t0 = datetime(2026, 11, 10, 15, 0).astimezone()
+    assert set_deadline(b, "engine-p1", 45, now=t0) == t0 + timedelta(minutes=45)
+    assert overdue(b, now=t0 + timedelta(minutes=44)) == []
+    assert overdue(b, now=t0 + timedelta(minutes=46)) == ["engine-p1"]
+    clear_deadline(b, "engine-p1")
+    assert overdue(b, now=t0 + timedelta(hours=9)) == [], "a child that reported is no longer watched"
+
+    assert _rejects(clear_heartbeat, b), "no heartbeat to stop"
+    set_heartbeat(b, "hb-1")
+    assert _rejects(set_heartbeat, b, "hb-2"), "only one heartbeat"
+    ph = add_phase(b, "p", req_ids=["REQ-001"])
+    assert _rejects(clear_heartbeat, b), "must not stop while a phase is open"
+    advance(b, ph); advance(b, ph)
+    advance(b, ph, gate=[{"cmd": "x", "exit": 0, "ok": True}])
+    set_deadline(b, "documenter", 20, now=t0)
+    assert _rejects(clear_heartbeat, b), "must not stop while a child still owes a report"
+    clear_deadline(b, "documenter")
+    assert clear_heartbeat(b) == "hb-1" and b["heartbeat"] == ""
+
+    with tempfile.TemporaryDirectory() as d:
+        for name in ("0001-a.md", "0007-b.md", "README.md"):
+            (Path(d) / name).write_text("x")
+        assert next_adr(b, d) == "0008", "must continue after the highest ADR on disk"
+        assert next_adr(b, d) == "0009", "the same number must never be issued twice"
+        b["adr_seq"] = 20
+        assert next_adr(b, d) == "0021", "the board counter wins when it is ahead of the disk"
+    assert next_adr(_new(), "/nonexistent/adr") == "0001", "a missing adr_dir means no ADR yet"
 
 
 def demo():
@@ -164,6 +306,8 @@ def demo():
     assert next_phase(b)["id"] == two
     assert _rejects(advance, b, one, gate=green), "advancing a done phase must fail"
     assert _rejects(advance, b, two, rework=True), "rework from pending must fail"
+    _demo_storage()
+    _demo_ops()
     print("ok")
 
 

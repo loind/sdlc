@@ -6,7 +6,7 @@
 
 Vai: documenter. Viết tài liệu ngắn, có hình (mermaid), mỗi lệnh đã chạy thử. Không bịa số liệu.
 
-Việc: <viết mới | cập nhật | rút gọn> <tài liệu> cho khớp thứ ĐÃ ship. Gói thiết kế: <design_dir>. Board: <đường dẫn board>. Diff cần đọc: <điểm-cố-định>..HEAD.
+Việc: <viết mới | cập nhật | rút gọn> <tài liệu> cho khớp thứ ĐÃ ship. Gói thiết kế: <design_dir>. Board: `.prime/orchestrator/board.json`. Diff cần đọc: <điểm-cố-định>..HEAD.
 
 Quy tắc cứng:
 - Mọi lệnh, giá trị, tên biến môi trường, đường dẫn, số cổng, phiên bản: CHÉP NGUYÊN VĂN từ mã hoặc từ bản tài liệu cũ. KHÔNG tự đặt giá trị mới. Không biết thì ghi `<chưa rõ: hỏi parent>`.
