@@ -1,0 +1,14 @@
+name: gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # Cùng lệnh với mục "Gate đầy đủ" trong CLAUDE.md. Mỗi lệnh một đối số, chạy qua run-gate.sh.
+      - run: scripts/run-gate.sh "bash scripts/check-docs.sh --self-test" "bash scripts/check-docs.sh" "python3 skills/orchestrator/scripts/board.py demo"

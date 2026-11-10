@@ -66,7 +66,7 @@ flowchart TD
 - [ ] Chép `mau/CONTEXT-mau.md` thành `CONTEXT.md` ở gốc repo. Điền thuật ngữ và phạm vi của bạn.
 - [ ] Chép `mau/CLAUDE-quy-tac-mau.md` vào file quy tắc agent của repo (`CLAUDE.md` hoặc `AGENTS.md`).
 - [ ] Tạo `docs/adr/` và chép `mau/adr-mau.md` làm ADR đầu tiên.
-- [ ] Chép `mau/check-docs-mau.sh` thành `scripts/check-docs.sh`.
+- [ ] Chép `mau/check-docs-mau.sh` thành `scripts/check-docs.sh`, điền `RETIRED`, rồi chạy `bash scripts/check-docs.sh --self-test`.
 - [ ] Chép `scripts/run-gate.sh` vào repo của bạn và `chmod +x` (xem mục [Gate](#gate)).
 - [ ] Với tính năng đầu tiên: nhờ agent chạy skill `thinker` để sinh gói thiết kế (xem `mau/goi-thiet-ke/` để biết hình dạng).
 
@@ -88,6 +88,7 @@ GATE_LOG=gate.log scripts/run-gate.sh "cargo fmt --all --check" "cargo test --lo
 - Cần logic nhiều bước (đọc tag build, sửa manifest, chờ rollout): đưa vào một script của repo và để gate gọi script đó.
 - Mỗi lệnh có giới hạn giờ `TIMEOUT_SEC` (mặc định 600). macOS không có `timeout`, script dùng `perl -e 'alarm ...'`.
 - Log nằm ở `GATE_LOG`. Dòng `[gate n] EXIT=<mã>: <lệnh>` là nguồn exit code mà orchestrator ghi vào board.
+- CI của repo này (`.github/workflows/gate.yml`) chạy đúng gate đầy đủ ghi ở `CLAUDE.md`.
 
 ## Điều kiện để chạy
 
