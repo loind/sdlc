@@ -16,7 +16,7 @@ Phát hiện mâu thuẫn với một ADR: dừng lại và báo parent. Không 
 
 ## Gate
 
-- Gate đầy đủ: `scripts/run-gate.sh "bash scripts/check-docs.sh --self-test" "bash scripts/check-docs.sh" "python3 skills/orchestrator/scripts/board.py demo"`. CI chạy đúng lệnh này (`.github/workflows/gate.yml`).
+- Gate đầy đủ: `scripts/run-gate.sh "bash scripts/check-docs.sh --self-test" "bash scripts/check-docs.sh" "bash scripts/check-pins.sh --self-test" "python3 skills/orchestrator/scripts/board.py demo"`. CI chạy đúng lệnh này (`.github/workflows/gate.yml`).
 - Mọi gate chạy qua `scripts/run-gate.sh`, mỗi lệnh gate là một đối số: `GATE_LOG=<file log> scripts/run-gate.sh "<lệnh 1>" "<lệnh 2>"`.
 - Mỗi gate là một lệnh đơn. Cấm `|`, `&&`, `;` và `&` trong lệnh gate. Pipe che exit code của lệnh đỏ. Script từ chối với exit 2.
 - Đỏ thì dừng. Gửi parent lệnh và output trong log. Không kết luận qua `| tail` hay `| head`.

@@ -75,7 +75,7 @@ Khi một repo dùng thư viện do repo khác phát hành (dự án gốc: ứn
 
 - **Lý do:** bản `TEST-<n>` chưa qua nhánh `master` có thể bị bỏ. Không được lọt vào `develop` hay `master`.
 - **Đừng để nhánh vào `develop` còn ghim `TEST-<n>`.** Trước khi vào `develop`, đổi sang `MASTER-<n>` tương ứng và ghi bằng chứng.
-- **Cổng ghim chạy ở stage đầu của CI** (`Initialize`), trước mọi bước nặng. Nhánh không xác định được thì áp luật chặt nhất, không pass ngầm.
+- **Cổng ghim chạy ở stage đầu của CI** (`Initialize`), trước mọi bước nặng. Nhánh không xác định được thì áp luật chặt nhất, không pass ngầm. Script mẫu: [`scripts/check-pins.sh`](scripts/check-pins.sh), có `--self-test`. Pipeline của MR truyền nhánh ĐÍCH, ví dụ `scripts/check-pins.sh --branch develop`, vì `TEST-<n>` không được lọt vào đó.
 - **Nâng phiên bản đồng thời:** hai thư viện nằm trong cùng cây phụ thuộc phải ghim cùng một bản. Nâng cả hai trong MỘT nhánh và MỘT file khoá. Khi đổi tag của thư viện lõi ở một repo, báo trước repo kia và chờ họ sẵn sàng nâng cùng lúc: nếu không, build của họ đỏ vì hai nguồn cho cùng một thư viện.
 - **Sau mỗi lần cập nhật file khoá:** đọc `git diff` của file khoá. Chạy cổng chặn hạ phiên bản (không crate/package nào được bị hạ). Bỏ một phụ thuộc làm các bản của riêng nó biến mất là **xoá**, không phải hạ. Cổng chặn không được tự thêm ngoại lệ: ngoại lệ do người dùng chốt, kèm ticket và số đo trong lý do.
 
