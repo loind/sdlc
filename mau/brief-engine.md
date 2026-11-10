@@ -18,11 +18,11 @@ Vòng làm việc, theo thứ tự:
 4. Chạy toàn bộ gate (bên dưới) và sửa đến khi xanh.
 5. Cập nhật tài liệu sống bị ảnh hưởng, trong CÙNG commit với thay đổi.
 
-Gate: chạy ĐÚNG chuỗi lệnh mà CI chạy.
-- <lệnh gate 1>
-- <lệnh gate 2>
-- <lệnh gate 3>
-Ghi stdout và stderr ra file, rồi kiểm exit code (`EXIT=$?`). KHÔNG kết luận qua `| tail` hoặc `| head`: pipe che mất exit code của lệnh đỏ. In một marker sau mỗi bước (FMT_OK, LINT_OK, TEST_OK) để log cho biết đã chạy tới đâu.
+Gate: chạy ĐÚNG chuỗi lệnh mà CI chạy, MỘT lần qua `scripts/run-gate.sh`, mỗi lệnh gate là một đối số:
+`GATE_LOG=<file log> scripts/run-gate.sh "<lệnh gate 1>" "<lệnh gate 2>" "<lệnh gate 3>"`
+- Mỗi đối số là một lệnh đơn. Cấm `|`, `&&`, `;` và cả `&` (kể cả `2>&1`): script từ chối ngay với exit 2. Cần logic nhiều bước thì đưa vào một script của repo và để gate gọi script đó.
+- Script tự ghi stdout và stderr vào `GATE_LOG`, bọc giới hạn giờ cho từng lệnh (`TIMEOUT_SEC`, mặc định 600), in `[gate n] EXIT=<mã>` sau mỗi lệnh và dừng ở lệnh đỏ đầu tiên.
+- Xanh khi script thoát 0 và dòng cuối là `GATE_GREEN`. Đỏ thì có `GATE_RED at [n]`: dừng, gửi parent lệnh và output trong log. KHÔNG kết luận qua `| tail` hoặc `| head`.
 
 Quy tắc:
 - Commit nhỏ, sớm, trên nhánh feature. Message: `#<ticket>: <mô tả>`.

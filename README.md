@@ -67,7 +67,27 @@ flowchart TD
 - [ ] Chép `mau/CLAUDE-quy-tac-mau.md` vào file quy tắc agent của repo (`CLAUDE.md` hoặc `AGENTS.md`).
 - [ ] Tạo `docs/adr/` và chép `mau/adr-mau.md` làm ADR đầu tiên.
 - [ ] Chép `mau/check-docs-mau.sh` thành `scripts/check-docs.sh`.
+- [ ] Chép `scripts/run-gate.sh` vào repo của bạn và `chmod +x` (xem mục [Gate](#gate)).
 - [ ] Với tính năng đầu tiên: nhờ agent chạy skill `thinker` để sinh gói thiết kế (xem `mau/goi-thiet-ke/` để biết hình dạng).
+
+## Gate
+
+Mọi gate chạy qua một runner duy nhất, [`scripts/run-gate.sh`](scripts/run-gate.sh). Mỗi lệnh gate là một đối số và là một lệnh đơn.
+
+```bash
+GATE_LOG=gate.log scripts/run-gate.sh "cargo fmt --all --check" "cargo test --locked"
+```
+
+| Kết quả | Dấu hiệu | Exit của script |
+|---|---|---|
+| Xanh | dòng cuối `GATE_GREEN all <n>` | 0 |
+| Đỏ | `GATE_RED at [n]`, dừng ở lệnh đỏ đầu tiên | exit của lệnh đỏ |
+| Từ chối | `REJECT` vì lệnh chứa `\|`, `&`, `;` | 2 |
+
+- Cấm `|`, `&&`, `;` và cả `&` (kể cả `2>&1`). Pipe che exit code của lệnh đỏ. Script đã gộp stderr vào log, nên không cần `2>&1`.
+- Cần logic nhiều bước (đọc tag build, sửa manifest, chờ rollout): đưa vào một script của repo và để gate gọi script đó.
+- Mỗi lệnh có giới hạn giờ `TIMEOUT_SEC` (mặc định 600). macOS không có `timeout`, script dùng `perl -e 'alarm ...'`.
+- Log nằm ở `GATE_LOG`. Dòng `[gate n] EXIT=<mã>: <lệnh>` là nguồn exit code mà orchestrator ghi vào board.
 
 ## Điều kiện để chạy
 

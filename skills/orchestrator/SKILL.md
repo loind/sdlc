@@ -166,12 +166,28 @@ b["gate"] = ["pytest -q", "ruff check ."]   # read from pyproject / package.json
 Run them yourself after **both** reviewers pass, shared gate first then the phase's own
 `phase_gate`, and advance with the combined results:
 
+Every gate command goes through `scripts/run-gate.sh` - never a raw `bash(cmd)`. The runner takes
+one simple command per argument and rejects `|`, `&&`, `;` and `&` with exit 2 (a pipe hides the red
+command's exit code), bounds each command with `TIMEOUT_SEC` (default 600), writes stdout+stderr to
+`GATE_LOG`, and prints `[gate n] EXIT=<code>: <cmd>`. You read that `EXIT=` line, not the shell
+status. The script is copied into the target repo (root `README.md`, section Gate).
+
 ```python
+import re, shlex
+from pathlib import Path
+
+async def run_gate(cmd, n):
+    log = Path(f".prime/orchestrator/gate-{n}.log")
+    log.unlink(missing_ok=True)              # a stale log must never read as a fresh green
+    await bash(f"GATE_LOG={log} scripts/run-gate.sh {shlex.quote(cmd)}")
+    exits = re.findall(r"^\[gate \d+\] EXIT=(\d+):", log.read_text(), re.M)
+    code = int(exits[-1]) if exits else 2    # no EXIT= line (REJECT, crash) is red
+    return {"cmd": cmd, "exit": code, "ok": code == 0}
+
 results = []
-for cmd in b["gate"] + phase.get("phase_gate", []):
-    r = await bash(cmd)
-    results.append({"cmd": cmd, "exit": r.exit_code, "ok": r.exit_code == 0})
-    if r.exit_code != 0:
+for n, cmd in enumerate(b["gate"] + phase.get("phase_gate", []), 1):
+    results.append(await run_gate(cmd, n))
+    if not results[-1]["ok"]:
         break   # fail fast: never spend a long stage on a build that already failed
 bd.advance(b, phase_id, gate=results)   # raises unless every command that ran passed
 ```

@@ -13,7 +13,7 @@ Acceptance:
 - <REQ-yyy: ...>
 
 Việc làm:
-1. Chạy gate đầy đủ trên ĐÚNG commit trên. Ghi ra file và kiểm exit code, không kết luận qua `| tail`.
+1. Chạy gate đầy đủ trên ĐÚNG commit trên qua `GATE_LOG=<file log> scripts/run-gate.sh "<lệnh 1>" "<lệnh 2>"`, mỗi lệnh một đối số, không `|`, `&&`, `;`. Đọc `EXIT=` và `GATE_GREEN`/`GATE_RED` trong log, không kết luận qua `| tail`.
 2. Tự kiểm độc lập bằng chương trình thật khi có thể (chạy binary, gửi request, đọc log). Đừng chỉ tin test của engine.
 3. Thử các nhánh lỗi, dữ liệu biên, và hồi quy so với hệ thống tham chiếu.
 4. Nếu thư mục build dùng chung với reviewer khác: KHÔNG xoá nó. Trước khi chạy trên checkout khác, `touch` file nguồn để cargo/bundler không dùng nhầm bản build cũ.
