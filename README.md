@@ -62,7 +62,7 @@ flowchart TD
 ### Bắt đầu nhanh (30 phút)
 
 - [ ] Đọc README này và `01-quy-trinh.md`.
-- [ ] Chép [`skills/`](skills/README.md) vào thư mục skill của công cụ agent bạn dùng.
+- [ ] Chép từng thư mục trong [`skills/`](skills/README.md) vào `.agents/skills/` của repo (cài repo-local, không cài vào thư mục của người dùng).
 - [ ] Chép `mau/CONTEXT-mau.md` thành `CONTEXT.md` ở gốc repo. Điền thuật ngữ và phạm vi của bạn.
 - [ ] Chép `mau/CLAUDE-quy-tac-mau.md` vào file quy tắc agent của repo (`CLAUDE.md` hoặc `AGENTS.md`).
 - [ ] Tạo `docs/adr/` và chép `mau/adr-mau.md` làm ADR đầu tiên.

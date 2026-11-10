@@ -160,7 +160,7 @@ writer. Load it in the kernel once, then reuse the module:
 
 ```python
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path("~/.agents/skills/orchestrator/scripts").expanduser()))
+sys.path.insert(0, str(pathlib.Path(".agents/skills/orchestrator/scripts").resolve()))  # repo-local, cwd = repo root
 import board as bd
 
 b = bd.load()
