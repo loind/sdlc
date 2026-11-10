@@ -1,7 +1,7 @@
 ---
 name: advisor
 description: "Chấm dự thảo của engineer theo đúng đầu mục họ đưa, bằng comment có điểm, kèm ghi chú nâng cấp ngắn. Use when the user says advisor, chấm dự thảo, xin đánh giá engineer, gửi advisor, hoặc workflow engineer-advisor. Spawn model xai/grok-4.7 thinking xhigh. Không viết code, không sửa repo."
-compatibility: Needs an agent tool that can spawn a child with model xai/grok-4.7 and thinking xhigh; if the host rejects xhigh the spawn stops with BLOCKED, no downgrade. Scores only the items the engineer supplies and reads only what the engineer gives or lists as readable paths.
+compatibility: Needs an agent tool that can spawn a child with model xai/grok-4.7 and thinking xhigh; if the host rejects xhigh the orchestrator notes advisor unavailable and the engine goes on, no downgrade. Scores only the items the engineer supplies and reads only what the engineer gives or lists as readable paths.
 ---
 
 # Advisor
@@ -11,10 +11,10 @@ Advisor chấm một dự thảo. Engineer đã kiểm tra code và viết dự 
 Model bắt buộc: `xai/grok-4.7`, thinking `xhigh`.
 
 ```python
-await rlm.spawn(brief, name="advisor", model="xai/grok-4.7", thinking="xhigh")
+await rlm.spawn(brief, name="advisor-p<phase>-draft", model="xai/grok-4.7", thinking="xhigh")
 ```
 
-Nếu spawn từ chối `xhigh`, dừng và báo `BLOCKED`. Không hạ thinking, không đổi model.
+Tên không có vòng: advisor không phải state board, không tăng round, không tính vào giới hạn 3 vòng review. Nếu spawn từ chối `xhigh` (hoặc provider sập), orchestrator ghi `advisor unavailable` kèm lý do và engine đi tiếp, phase không bị block. Không hạ thinking, không đổi model.
 
 ## Ai làm gì
 
@@ -26,9 +26,9 @@ Nếu spawn từ chối `xhigh`, dừng và báo `BLOCKED`. Không hạ thinking
 
 Engineer gửi:
 
-- Đường dẫn tài liệu, hoặc nội dung dự thảo dán thẳng.
-- Danh sách đầu mục cần chấm. Không có danh sách thì lấy đúng các heading `##` / `###` trong tài liệu. Không tự thêm đầu mục chấm.
-- Phạm vi đã đọc (file, diff, log). Advisor chỉ dùng phần engineer đưa. Thiếu bằng chứng thì ghi `thiếu bằng chứng`, không đi đọc repo để tự chứng minh, trừ khi engineer ghi rõ "được đọc các path sau".
+- Đường dẫn file dự thảo, tối đa 1500 từ. Dài hơn thì orchestrator trả về cho engine cắt, advisor không nhận.
+- Danh sách đầu mục cần chấm, mỗi đầu mục kiểm được. Không có danh sách thì lấy đúng các heading `##` / `###` trong tài liệu. Không tự thêm đầu mục chấm.
+- Phạm vi đã đọc (file, diff, log). Advisor CHỈ đọc nội dung dự thảo và đúng các path được liệt kê ở đây. Thiếu bằng chứng thì ghi `thiếu bằng chứng`, không tự đi đọc repo để chứng minh.
 
 ## Cách chấm
 
@@ -70,6 +70,7 @@ Chỉ hai khối, theo thứ tự này. Không mở đầu bằng tóm tắt dà
 - Không sửa file, không chạy lệnh ghi, không deploy.
 - Không đổi thang điểm, không thêm rubric mới.
 - Không chấm đầu mục engineer không đưa.
+- Không đọc repo, không mở path ngoài danh sách engineer liệt kê.
 - Không biến comment thành kế hoạch triển khai hay danh sách file phải sửa.
 - Không spawn advisor bằng model khác `xai/grok-4.7`.
 

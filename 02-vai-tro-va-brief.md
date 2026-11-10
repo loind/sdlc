@@ -17,7 +17,7 @@
 | **thinker** (kỹ năng của phiên chính) | Model mạnh, thinking cao | model mạnh của phiên chính | Hỏi người dùng, đọc repo, viết gói thiết kế | `prd.md`, `srs.md`, `design.md`, `phases.md` |
 | **builder check** (sub-agent của thinker) | Model mạnh, ngữ cảnh mới | chưa dùng ở dự án gốc (thêm sau) | Đọc gói thiết kế như kỹ sư phải build theo nó mà không được hỏi người dùng. Chỉ báo chỗ phải đoán, xếp theo mức quan trọng. Chạy một vòng | Danh sách câu hỏi kèm file và mục, hoặc "nothing important left" |
 | **engine** | Model nhanh, rẻ, viết mã tốt | một model "flash" của nhà cung cấp thứ ba | Làm đúng một phase: test đỏ, mã, chạy test | Commit trên nhánh feature, báo cáo `DONE` kèm SHA |
-| **advisor** | `xai/grok-4.7`, thinking `xhigh` | grok-4.7 | Chấm dự thảo theo đúng đầu mục engine đưa; thêm tối đa ba gạch nâng cấp | `## Comments` điểm 0–5 + `## Nâng cấp` |
+| **advisor** | `xai/grok-4.7`, thinking `xhigh` | grok-4.7 | Chấm dự thảo (≤1500 từ) theo đúng đầu mục engine đưa; thêm tối đa ba gạch nâng cấp. Không phải state board, không tăng vòng, lỗi thì không block phase | `## Comments` điểm 0–5 + `## Nâng cấp` |
 | **qc** | Model mạnh, chạy được lệnh | Sonnet bản mới nhất | Chấm diff theo acceptance, từng `REQ`; tự kiểm bằng chương trình thật | `VERDICT: PASS/FAIL` + từng REQ |
 | **qc2** | Model KHÁC họ với qc, thinking cao | một model thuộc họ khác | Kiểm độc lập song song với qc | `VERDICT: PASS/FAIL` |
 | **code-review** | Model mạnh | Sonnet bản mới nhất | Review chất lượng 6 tiêu chí theo `ponytail-review` v5: đúng, an toàn, chịu tải, có test, nhanh, gọn | `VERDICT: APPROVE/REQUEST_CHANGES` + phát hiện có mức độ |
@@ -34,7 +34,7 @@
 
 ```text
 engine        -> engine-p<phase>              (dùng lại qua các vòng sửa, mới ở phase sau)
-advisor       -> advisor-p<phase>-r<vòng>    (tên mới mỗi vòng; model xai/grok-4.7, thinking xhigh)
+advisor       -> advisor-p<phase>-draft      (không có vòng: không tăng round, không tính vào 3 vòng review; chỉ chạy lại khi engine viết dự thảo mới; model xai/grok-4.7, thinking xhigh)
 qc            -> qc-p<phase>-r<vòng>          (tên mới mỗi vòng, không dùng lại)
 qc2           -> qc2-p<phase>-r<vòng>
 code-review   -> code-review-p<phase>-r<vòng>
@@ -120,12 +120,19 @@ Gói thiết kế: <design_dir>. Đọc `phases.md` cho phase của bạn và `s
 Nhánh: `feature/<ticket>-<slug>`, cắt từ <develop | nhánh xếp chồng parent chỉ định>. Worktree: <đường dẫn>.
 Số ADR mới (nếu cần): <NNNN>. Parent cấp số này. Không tự chọn số.
 
-Vòng làm việc, theo thứ tự:
-1. Lập kế hoạch ngắn.
-2. Viết test đỏ trước. Chạy và xác nhận nó đỏ vì đúng lý do.
-3. Viết mã cho đến khi test xanh.
-4. Chạy toàn bộ gate (bên dưới) và sửa đến khi xanh.
-5. Cập nhật tài liệu sống bị ảnh hưởng, trong CÙNG commit với thay đổi.
+Giai đoạn 1 - Dự thảo (CHƯA viết mã):
+1. Đọc code của phase, lập kế hoạch ngắn.
+2. Ghi dự thảo ra `<đường dẫn dự thảo>`: TỐI ĐA 1500 từ, gồm (a) danh sách đầu mục cần chấm, mỗi đầu mục là một câu hỏi hoặc một khẳng định kiểm được kèm bằng chứng; (b) phạm vi đã đọc: file, diff, log (path cụ thể). Path nào advisor được đọc thêm thì liệt kê ở đây, còn lại advisor chỉ thấy nội dung dự thảo.
+3. Gửi parent một tin: dòng đầu `PROGRESS`, dòng hai `DRAFT: <đường dẫn dự thảo>`. Rồi DỪNG và chờ tin của parent. Không viết mã trước khi nhận tin.
+4. Parent gửi điểm của advisor, hoặc `advisor unavailable: <lý do>` (khi đó đi tiếp, không chờ advisor). Ghi hướng đã chọn, kể cả chỗ không theo advisor kèm lý do, vào báo cáo cuối.
+
+Giai đoạn 2 - Phát triển, theo thứ tự:
+1. Viết test đỏ trước. Chạy và xác nhận nó đỏ vì đúng lý do.
+2. Viết mã cho đến khi test xanh.
+3. Chạy toàn bộ gate (bên dưới) và sửa đến khi xanh.
+4. Cập nhật tài liệu sống bị ảnh hưởng, trong CÙNG commit với thay đổi.
+
+Vòng sửa sau qc hoặc code-review FAIL: sửa thẳng theo phản hồi. KHÔNG viết dự thảo mới và KHÔNG gửi advisor, trừ khi hướng đi đổi: khi đó gửi `DRAFT:` mới và chờ như giai đoạn 1.
 
 Gate: chạy ĐÚNG chuỗi lệnh mà CI chạy, MỘT lần qua `scripts/run-gate.sh`, mỗi lệnh gate là một đối số:
 `GATE_LOG=<file log> scripts/run-gate.sh "<lệnh gate 1>" "<lệnh gate 2>" "<lệnh gate 3>"`
@@ -155,16 +162,17 @@ Báo cáo cuối (dòng đầu DONE hoặc DONE_WITH_CONCERNS):
 ```text
 Vai: advisor. CHẤM dự thảo theo đúng đầu mục engine đưa. Không sửa mã. Không commit. Không triển khai.
 
-Model: xai/grok-4.7. Thinking: xhigh. Nếu host từ chối xhigh: BLOCKED, không hạ thinking, không đổi model.
+Model: xai/grok-4.7. Thinking: xhigh. Tên phiên: advisor-p<phase>-draft.
+Host từ chối xhigh hoặc provider không tới được: báo BLOCKED kèm lệnh và lỗi. Orchestrator ghi advisor unavailable, engine đi tiếp, phase KHÔNG bị block. Không hạ thinking, không đổi model.
 
-Phase <id>. Dự thảo: <đường dẫn hoặc nội dung>.
+Phase <id>. Dự thảo: <đường dẫn> (tối đa 1500 từ).
 Đầu mục cần chấm (engine đưa, không tự thêm):
 - <đầu mục 1>
 - <đầu mục 2>
 Phạm vi được đọc: <path engineer cho phép, hoặc "chỉ nội dung dự thảo">.
 
 Việc làm:
-1. Đọc dự thảo. Chỉ dùng bằng chứng engineer đã đưa, trừ khi phạm vi được đọc nói khác.
+1. Đọc dự thảo. CHỈ đọc thứ engineer đưa: nội dung dự thảo và đúng các path ở "Phạm vi được đọc". Thiếu bằng chứng thì ghi `thiếu bằng chứng` ở dòng Thiếu. KHÔNG tự đi đọc repo, chạy lệnh hay mở path ngoài danh sách.
 2. Mỗi đầu mục một comment: Điểm N/5, nhận xét một hoặc hai câu, dòng Thiếu hoặc `không`.
 3. Thêm khối Nâng cấp: tối đa ba gạch, mỗi gạch một câu. Không có thì ghi không có việc nâng cấp ngoài các đầu mục đã chấm.
 
@@ -305,7 +313,8 @@ Dùng ở cuối đợt. Mẫu: [`mau/brief-verifier.md`](mau/brief-verifier.md)
 ## Checklist trước khi gửi brief
 
 - [ ] Có đường dẫn tới gói thiết kế và mã `REQ` của phase (engine, qc).
-- [ ] Brief advisor có danh sách đầu mục engine đưa và model `xai/grok-4.7` thinking `xhigh`.
+- [ ] Brief engine có trần dự thảo 1500 từ, đầu mục kiểm được và phạm vi đã đọc (file, diff, log).
+- [ ] Brief advisor có danh sách đầu mục engine đưa, phạm vi được đọc và model `xai/grok-4.7` thinking `xhigh`. Tên `advisor-p<phase>-draft`, không có vòng.
 - [ ] Có commit SHA cụ thể cần chấm hoặc soát (reviewer).
 - [ ] Có deadline: giờ tuyệt đối lấy từ đồng hồ máy (PROGRESS, báo cáo cuối, dọn dẹp) và câu "hết deadline phải báo cáo".
 - [ ] Có số ADR đã cấp, nếu engine có thể viết ADR (và số khác nhau nếu chạy song song).
