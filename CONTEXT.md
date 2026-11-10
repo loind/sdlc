@@ -12,6 +12,10 @@ _Tránh dùng_: manager, controller.
 Phiên con do orchestrator giao việc: engine, advisor, qc, qc2, code-review, documenter, research, devops, verifier. Giữ tới cuối run, không xoá sau phase (ADR-0001).
 _Tránh dùng_: worker, sub-agent.
 
+**advisor**:
+Child chấm dự thảo của engine trước khi engine viết mã, tên `advisor-p<phase>-draft`. Không phải state board, không tăng round, không tính vào 3 vòng review. Lỗi thì phase vẫn chạy (ADR-0002).
+_Tránh dùng_: reviewer (reviewer chấm diff, không chấm dự thảo).
+
 **phase**:
 Đơn vị giao cho một engine. Có `REQ-xxx`, acceptance và lệnh gate riêng. Lấy từ `phases.md` của gói thiết kế.
 _Tránh dùng_: step, task (dành cho việc nhỏ hơn).
@@ -56,4 +60,4 @@ Nằm ở ba nơi phải khớp nhau: `FRAME` trong `skills/orchestrator/SKILL.m
 ## Số liệu
 
 **Hạn gợi ý cho child**:
-engine 45 phút mỗi phase, qc và code-review 20 phút mỗi vòng, devops 20, verifier 30, documenter 20. Deadline luôn là giờ tuyệt đối lấy từ đồng hồ máy.
+engine 45 phút mỗi phase, advisor 20 phút mỗi dự thảo, qc và code-review 20 phút mỗi vòng, devops 20, verifier 30, documenter 20. Deadline luôn là giờ tuyệt đối lấy từ đồng hồ máy.

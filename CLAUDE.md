@@ -26,6 +26,7 @@ Phát hiện mâu thuẫn với một ADR: dừng lại và báo parent. Không 
 - Giữ child tới cuối run. Không gọi `rlm.delete_subagent` khi phase xong.
 - Giao việc bằng `rlm.spawn` hoặc `agent_message.send`, ghi board, kết thúc lượt, chờ tin. Không chờ kết quả như một giá trị trả về.
 - Child chỉ nhắn parent và không sinh child con. Đây là luật trong brief, không phải giới hạn của nền tảng.
+- Advisor là lời khuyên, không phải state board (ADR-0002): tên `advisor-p<phase>-draft`, không tăng `round`, không tính vào 3 vòng review, lỗi thì `bd.advisor_unavailable` và engine đi tiếp, không `bd.block`. Chỉ gửi advisor khi engine viết dự thảo mới (`bd.advisor_draft`).
 - Báo cáo cuối của child có dòng đầu là một trong bốn token `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, `NEEDS_CONTEXT`. Không dịch token.
 - Deadline luôn là giờ tuyệt đối lấy từ đồng hồ máy. Heartbeat 5 phút chạy từ lúc khởi tạo tới khi không còn child nào chưa báo cáo.
 

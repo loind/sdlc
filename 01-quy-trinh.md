@@ -99,9 +99,9 @@ sequenceDiagram
   end
 ```
 
-1. **engine** kiểm code của phase và viết **dự thảo**: kế hoạch ngắn, đầu mục cần chấm, bằng chứng đã đọc. Chưa coi phase là xong.
-2. **advisor** chỉ chấm đúng các đầu mục engine đưa, điểm 0–5 kèm nhận xét, rồi tối đa ba gạch nâng cấp ngắn. Model `xai/grok-4.7`, thinking `xhigh`. Không sửa mã, không thêm đầu mục. Điểm advisor **không** đóng phase và **không** tự thành vòng sửa: orchestrator gửi điểm về engine.
-3. **engine** đọc điểm, ghi hướng đã chọn (kể cả chỗ không theo advisor, kèm lý do), rồi mới phát triển: test đỏ trước, viết mã, chạy test. Commit sớm, từng bước nhỏ, trên nhánh feature. Không `push`. Vòng sửa sau qc hoặc code-review không bắt buộc gửi advisor lại, trừ khi engine viết dự thảo mới.
+1. **engine** kiểm code của phase và viết **dự thảo** ra file, chưa viết mã: kế hoạch ngắn, **tối đa 1500 từ**, danh sách đầu mục cần chấm (mỗi đầu mục kiểm được) và phạm vi đã đọc (file, diff, log). Engine gửi orchestrator một tin có dòng đầu `PROGRESS` và dòng `DRAFT: <đường dẫn>`, rồi chờ. Phase vẫn ở `engine`. Dự thảo quá 1500 từ thì orchestrator trả về cho engine cắt, không gửi advisor.
+2. **advisor** (`advisor-p<phase>-draft`, model `xai/grok-4.7`, thinking `xhigh`) chỉ chấm đúng các đầu mục engine đưa, điểm 0–5 kèm nhận xét, rồi tối đa ba gạch nâng cấp ngắn. Chỉ đọc thứ engine đưa: thiếu bằng chứng thì ghi `thiếu bằng chứng`, không tự đọc repo, trừ path được liệt kê. Không sửa mã, không thêm đầu mục. Advisor **không phải trạng thái board** (board vẫn `pending -> engine -> review -> done`), **không tăng round** và **không tính vào giới hạn 3 vòng review**. Điểm advisor **không** đóng phase và **không** tự thành vòng sửa: orchestrator gửi điểm về engine. Advisor lỗi (host từ chối `xhigh`, provider sập, im lặng sau lần nhắc) thì **không block phase**: orchestrator ghi `advisor unavailable: <lý do>` vào notes và board log (`bd.advisor_unavailable`), rồi báo engine đi tiếp.
+3. **engine** đọc điểm (hoặc thông báo advisor unavailable), ghi hướng đã chọn (kể cả chỗ không theo advisor, kèm lý do), rồi mới phát triển: test đỏ trước, viết mã, chạy test. Commit sớm, từng bước nhỏ, trên nhánh feature. Không `push`. Vòng sửa sau qc hoặc code-review FAIL **không** gửi advisor lại: advisor chỉ chạy lại khi engine viết **dự thảo mới** (`DRAFT:` mới; orchestrator kiểm bằng `bd.advisor_draft`).
 4. **qc** chấm diff **theo acceptance của phase**, từng `REQ` một: PASS hoặc FAIL kèm thứ còn thiếu. Dùng đúng phương pháp kiểm ghi trong SRS. Không kiểm được thì là FAIL, không phải PASS.
 5. **qc2** (nếu dùng) chấm cùng brief nhưng model khác, độc lập. Mục đích: bắt thứ qc bỏ sót (nhánh lỗi, dữ liệu biên, lộ bí mật).
 6. **code-review** đọc và áp dụng skill `ponytail-review` (v5). Đây là review **chất lượng đầy đủ**, không chỉ tìm mã thừa. Thứ tự quan trọng: **đúng, an toàn, chịu tải, có test, nhanh, gọn** (xoá hơn thêm). Reviewer đọc **cả mã liên quan** (nơi gọi hàm đã đổi, hàm được gọi, test, README), không chỉ diff, và ước tải mong đợi từ repo. Không chấm requirement (việc của qc). Trả `APPROVE` hoặc `REQUEST_CHANGES`. Mỗi phát hiện có mức độ (`BLOCKER`, `MAJOR`, `MINOR`, `NIT`), `file:dòng`, ca cụ thể làm hỏng, cách sửa nhỏ nhất và hậu quả nếu bỏ qua. Chi tiết ở [`02`](02-vai-tro-va-brief.md#code-review).
@@ -167,7 +167,7 @@ Child chạy mà không có hạn thì không ai biết nó treo hay đang làm.
 
 - **Không brief nào đi mà thiếu deadline.** Gồm cả reviewer, verifier, documenter, không chỉ engine.
 - **Deadline là giờ tuyệt đối, lấy bằng đồng hồ máy** (`datetime.now()`) trước khi đặt. Đã có lần đoán giờ lệch hơn một tiếng và phải gửi lại brief. Ba mốc: PROGRESS giữa chừng, báo cáo cuối chậm nhất, dọn dẹp xong.
-- **Hạn gợi ý** (chỉnh theo dự án): engine 45 phút mỗi phase. qc và code-review 20 phút mỗi vòng. devops 20, verifier 30, documenter 20. Việc dài hơn: chia nhỏ, hoặc đặt mốc PROGRESS dày hơn.
+- **Hạn gợi ý** (chỉnh theo dự án): engine 45 phút mỗi phase. advisor 20 phút mỗi dự thảo. qc và code-review 20 phút mỗi vòng. devops 20, verifier 30, documenter 20. Việc dài hơn: chia nhỏ, hoặc đặt mốc PROGRESS dày hơn.
 - **Hết deadline, child bắt buộc báo cáo.** Xong thì `DONE`. Chưa xong thì gửi **cái đã có** với `DONE_WITH_CONCERNS` (hoặc `BLOCKED` nếu bị chặn), kèm danh sách việc chưa làm. Im lặng quá deadline là vi phạm, không phải "đang làm".
 - **Gia hạn chỉ bằng tin của orchestrator.** Child cần thêm giờ thì gửi `PROGRESS` xin gia hạn trước deadline, rồi chờ trả lời. Không tự kéo dài.
 - **Ghi deadline của từng child lên board**, để heartbeat đối chiếu.
@@ -196,7 +196,7 @@ Child chạy mà không có hạn thì không ai biết nó treo hay đang làm.
 5. Orchestrator kiểm diff cuối bằng mắt: phản hồi "đã sửa" của engine không phải bằng chứng. Với bản sửa nhỏ chỉ chạm tài liệu, có thể bỏ review đầy đủ nhưng phải kiểm diff không đụng `src/`, test, hay file khoá phụ thuộc.
 6. Reviewer không thấy phản hồi của nhau. Hai reviewer đồng ý vì một người đọc người kia chỉ là một reviewer.
 7. Phát hiện chưa chặn (`MINOR`/`NIT`): ghi vào ticket phụ, không chặn phase.
-8. Thường cần **2 vòng**. Tối đa **3 vòng**. Sang vòng 4 mà còn phát hiện chặn thì orchestrator dừng, xem lại thiết kế hoặc phạm vi phase rồi mới quyết (không tự mở vòng 4 mù).
+8. Thường cần **2 vòng**. Tối đa **3 vòng**. Advisor không phải một vòng: nó không tăng round và không tính vào giới hạn này. Sang vòng 4 mà còn phát hiện chặn thì orchestrator dừng, xem lại thiết kế hoặc phạm vi phase rồi mới quyết (không tự mở vòng 4 mù).
 9. Reviewer **tự đo lại**, không tin lời engine: chạy probe, chạy trên bản sao của cây, so bản cũ với bản mới (A/B). Câu "đã sửa", "test xanh" của engine chỉ là điểm xuất phát (bài học 26 và 27 ở [`05`](05-bai-hoc.md)).
 10. Với thay đổi chạm quyết định bảo mật, chạy **review bảo mật** (code-review) và **QC fuzz vi sai với hệ thống chuẩn** (qc, qc2) **song song**. Hai bên tìm hai loại lỗi khác nhau (bài học 28).
 

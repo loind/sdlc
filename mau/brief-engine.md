@@ -11,12 +11,19 @@ Gói thiết kế: <design_dir>. Đọc `phases.md` cho phase của bạn và `s
 Nhánh: `feature/<ticket>-<slug>`, cắt từ <develop | nhánh xếp chồng parent chỉ định>. Worktree: <đường dẫn>.
 Số ADR mới (nếu cần): <NNNN>. Parent cấp số này. Không tự chọn số.
 
-Vòng làm việc, theo thứ tự:
-1. Lập kế hoạch ngắn.
-2. Viết test đỏ trước. Chạy và xác nhận nó đỏ vì đúng lý do.
-3. Viết mã cho đến khi test xanh.
-4. Chạy toàn bộ gate (bên dưới) và sửa đến khi xanh.
-5. Cập nhật tài liệu sống bị ảnh hưởng, trong CÙNG commit với thay đổi.
+Giai đoạn 1 - Dự thảo (CHƯA viết mã):
+1. Đọc code của phase, lập kế hoạch ngắn.
+2. Ghi dự thảo ra `<đường dẫn dự thảo>`: TỐI ĐA 1500 từ, gồm (a) danh sách đầu mục cần chấm, mỗi đầu mục là một câu hỏi hoặc một khẳng định kiểm được kèm bằng chứng; (b) phạm vi đã đọc: file, diff, log (path cụ thể). Path nào advisor được đọc thêm thì liệt kê ở đây, còn lại advisor chỉ thấy nội dung dự thảo.
+3. Gửi parent một tin: dòng đầu `PROGRESS`, dòng hai `DRAFT: <đường dẫn dự thảo>`. Rồi DỪNG và chờ tin của parent. Không viết mã trước khi nhận tin.
+4. Parent gửi điểm của advisor, hoặc `advisor unavailable: <lý do>` (khi đó đi tiếp, không chờ advisor). Ghi hướng đã chọn, kể cả chỗ không theo advisor kèm lý do, vào báo cáo cuối.
+
+Giai đoạn 2 - Phát triển, theo thứ tự:
+1. Viết test đỏ trước. Chạy và xác nhận nó đỏ vì đúng lý do.
+2. Viết mã cho đến khi test xanh.
+3. Chạy toàn bộ gate (bên dưới) và sửa đến khi xanh.
+4. Cập nhật tài liệu sống bị ảnh hưởng, trong CÙNG commit với thay đổi.
+
+Vòng sửa sau qc hoặc code-review FAIL: sửa thẳng theo phản hồi. KHÔNG viết dự thảo mới và KHÔNG gửi advisor, trừ khi hướng đi đổi: khi đó gửi `DRAFT:` mới và chờ như giai đoạn 1.
 
 Gate: chạy ĐÚNG chuỗi lệnh mà CI chạy, MỘT lần qua `scripts/run-gate.sh`, mỗi lệnh gate là một đối số:
 `GATE_LOG=<file log> scripts/run-gate.sh "<lệnh gate 1>" "<lệnh gate 2>" "<lệnh gate 3>"`

@@ -19,6 +19,7 @@ RETIRED=(
   'FMT_OK|LINT_OK|TEST_OK'           # marker gate cũ; nay run-gate.sh in GATE_OK / GATE_RED
   '~/\.agents/skills'                # skill cài repo-local ở .agents/skills/, không cài vào thư mục người dùng
   '/orchestration'                   # skill tên orchestrator, gọi bằng /skill:orchestrator
+  'advisor-p[^ `]*-r'                # advisor không có vòng, tên là advisor-p<phase>-draft (ADR-0002)
 )
 EXCLUDE=(
   ':!docs/adr'                       # quyết định kèm lý do lịch sử

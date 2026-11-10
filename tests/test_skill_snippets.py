@@ -49,6 +49,8 @@ class FakeRlm:
         return [types.SimpleNamespace(session_name=n) for n in calls["existing"]]
 
     async def spawn(self, prompt, *, name, model=None, thinking=None):
+        if calls.get("spawn_error"):
+            raise RuntimeError(calls["spawn_error"])
         calls["spawn"].append(dict(prompt=prompt, name=name, model=model, thinking=thinking))
 
 
@@ -64,14 +66,15 @@ def test_heartbeat_snippet():
     assert hb["interval"] == "5m" and hb["delivery_mode"] == "follow_up", hb
     for must in ("bd.load()", "bd.overdue(b)", "agent_observe.get_agent", "agent_observe.recent_messages",
                  "ps -Ao pid,etime,pcpu,command", "kill the process, never the child", "ONE message",
-                 "more than 10 minutes", "bd.block(b, phase_id, reason)", "Never delete the child"):
+                 "more than 10 minutes", "bd.block(b, phase_id, reason)", "Never delete the child",
+                 "bd.advisor_unavailable(b, phase_id, reason)", "Never bd.block for the advisor"):
         assert must in hb["instruction"], f"WATCH_INSTRUCTION thiếu: {must}"
     assert ns["b"]["heartbeat"] == "hb-1", "id heartbeat phải nằm trên board"
     assert bd.load()["heartbeat"] == "hb-1", "và phải được save xuống đĩa"
 
 
 def test_dispatch_snippet():
-    code = "\n".join(block(n) for n in ("def child_name", "FRAME = ", "async def dispatch"))
+    code = "\n".join(block(n) for n in ("def child_name", "FRAME = ", "async def dispatch(role"))
     ns = {"rlm": FakeRlm(), "agent_message": FakeMessage(), "ROLE_PROMPT": {"engine": "ROLE-ENGINE"}}
     exec(code, ns)
     b, phase = bd.load(Path("/nonexistent/board.json")), {"id": 3, "round": 1}
@@ -100,6 +103,66 @@ def test_dispatch_snippet():
     assert "DEADLINE (giờ máy" in calls["send"][0]["message"]
 
 
+def test_advisor_snippet():
+    code = "\n".join(block(n) for n in ("def child_name", "FRAME = ", "async def dispatch(role", "async def dispatch_advisor"))
+    ns = {"rlm": FakeRlm(), "agent_message": FakeMessage(), "bd": bd,
+          "ROLE_PROMPT": {"engine": "ROLE-ENGINE", "advisor": "ROLE-ADVISOR"}}
+    exec(code, ns)
+    b = bd.load(Path("/nonexistent/board.json"))
+    bd.add_phase(b, "p", req_ids=["REQ-001"])
+    bd.set_heartbeat(b, "hb-1")
+    b["models"] = {"advisor": "xai/grok-4.7"}
+    ph = b["phases"][0]
+    for k in ("spawn", "send"):
+        calls[k].clear()
+    calls["existing"], calls["spawn_error"] = [], None
+
+    assert ns["child_name"]("advisor", {"id": 1, "round": 2}) == "advisor-p1-draft", "advisor name has no round"
+    assert ns["child_name"]("qc", {"id": 1, "round": 2}) == "qc-p1-r2"
+    draft = Path("draft.md")
+    draft.write_text("kế hoạch một", encoding="utf-8")
+
+    asyncio.run(ns["dispatch_advisor"](ph, draft, "BRIEF", b))
+    sp = calls["spawn"][0]
+    assert sp["name"] == "advisor-p1-draft" and sp["model"] == "xai/grok-4.7" and sp["thinking"] == "xhigh", sp
+    assert (ph["status"], ph["round"]) == ("pending", 1), "advisor must not move status or round"
+    assert "advisor-p1-draft" in b["deadlines"]
+
+    assert asyncio.run(ns["dispatch_advisor"](ph, draft, "BRIEF", b)) is None
+    assert len(calls["spawn"]) == 1 and not calls["send"], "same draft: nothing is dispatched"
+    ph["status"] = "review"
+    bd.advance(b, 1, rework=True, note="qc FAIL")
+    assert ph["round"] == 2
+    assert asyncio.run(ns["dispatch_advisor"](ph, draft, "BRIEF", b)) is None
+    assert len(calls["spawn"]) == 1 and not calls["send"], "a rework round after FAIL must not re-run the advisor"
+
+    draft.write_text("kế hoạch hai", encoding="utf-8")
+    calls["existing"] = ["advisor-p1-draft"]
+    asyncio.run(ns["dispatch_advisor"](ph, draft, "BRIEF-2", b))
+    assert len(calls["spawn"]) == 1 and calls["send"][0]["name"] == "advisor-p1-draft", "new draft reuses the advisor by name"
+
+    draft.write_text("từ " * 1501, encoding="utf-8")
+    try:
+        asyncio.run(ns["dispatch_advisor"](ph, draft, "BRIEF-3", b))
+        raise AssertionError("a draft over 1500 words must be refused")
+    except AssertionError as e:
+        assert "1501 words" in str(e), e
+
+    # host từ chối xhigh: phase không bị block, ghi notes + log, bỏ deadline của advisor
+    draft.write_text("kế hoạch ba", encoding="utf-8")
+    calls["existing"], calls["spawn_error"] = [], "host rejects thinking=xhigh"
+    ph["status"], before = "engine", dict(ph)
+    assert asyncio.run(ns["dispatch_advisor"](ph, draft, "BRIEF-4", b)) is None
+    assert ph["status"] == "engine" and ph["round"] == before["round"] and "blocked_reason" not in ph
+    assert "advisor unavailable: RuntimeError: host rejects thinking=xhigh" in ph["notes"]
+    assert "advisor-p1-draft" not in b["deadlines"], "deadline of an unavailable advisor must be gone"
+    assert "advisor unavailable" in bd.load()["log"][-1]["event"], "and it must be saved to disk"
+
+    calls["spawn_error"] = None
+    asyncio.run(ns["dispatch"]("engine", ph, "BRIEF-E", b))
+    assert calls["spawn"][-1]["thinking"] is None, "only the advisor forces a thinking level"
+
+
 if __name__ == "__main__":
     start = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
@@ -107,6 +170,7 @@ if __name__ == "__main__":
         try:
             test_heartbeat_snippet()
             test_dispatch_snippet()
+            test_advisor_snippet()
         finally:
             os.chdir(start)
     print("skill snippets ok")
