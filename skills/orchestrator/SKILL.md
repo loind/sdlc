@@ -50,7 +50,7 @@ last two need `receiver_name`):
 | orchestrator | child | yes: briefs, rework, `NEEDS_CONTEXT` answers, report-now nudges |
 | child | parent | yes, and only this: PROGRESS lines and the final report |
 | child | sibling | no: qc and code-reviewer must not see each other's reply |
-| child | its own child | no: a child never spawns, so there are no grandchildren |
+| child | its own child | no, by rule: the platform default would allow it (see Limits), so `FRAME` forbids it |
 
 Every brief carries `FRAME` (see Role briefs): the final report starts with one of four untranslated
 tokens; deadlines are absolute times from the machine clock; every command that can hang is bounded
@@ -255,29 +255,35 @@ if everything else could run in parallel. Say which environment it targets in th
 
 ## Model routing
 
-Resolve selectors at runtime - never hardcode a model id. Store the choice on the board so
-every respawn of a role uses the same model:
+`models.json` (next to `scripts/`) holds the role-to-model table. Resolve the selector at runtime
+and store the choice on the board, so every respawn of a role uses the same model:
 
 ```python
-# find_models tra ve moi ban khop va thu tu KHONG phai moi-nhat-truoc: "sonnet" cho ra
-# claude-sonnet-4-5, 4-5-20250929, 4-6, 5 - lay [0] la lay 4.5. Loc theo id chinh xac.
-# Model theo vai (người dùng chốt 29/09/2026): engine = deepseek-v4-flash (provider deepseek),
-# documenter (viết/cập nhật tài liệu, rà câu chữ) = gemini-3.8-flash (google-vertex), còn lại Sonnet 5.5.
-WANT = {"engine": ("deepseek", "deepseek-v4-flash"),
-        "documenter": ("gemini-3.8", "gemini-3.8-flash"),
-        "*": ("sonnet", "claude-sonnet-5-5")}
+import json
+from pathlib import Path
+
+# find_models returns every match, newest NOT first: "sonnet" gives 4-5, 4-5-20250929, 4-6, 5, so
+# taking [0] silently picks 4.5. Match the exact id (and provider when pinned) and demand exactly one.
+# models.json (user decision 29/09/2026): engine = deepseek-v4-flash, documenter = gemini-3.8-flash,
+# every other role = claude-sonnet-5-5.
+TABLE = json.loads((Path(bd.__file__).parents[1] / "models.json").read_text(encoding="utf-8"))
+
 async def pick(role):
-    q, mid = WANT.get(role, WANT["*"])
-    sel = next((m.selector for m in await rlm.find_models(q) if m.id == mid), None)
-    assert sel, f"khong thay {mid}"
-    return sel
+    want = {**TABLE["default"], **TABLE["roles"].get(role, {})}
+    hits = [m for m in await rlm.find_models(want["query"], limit=50)   # default limit is 8
+            if m.id == want["id"] and m.provider == want.get("provider", m.provider)]
+    assert len(hits) == 1, (f"{role}: cần đúng 1 model id={want['id']} provider={want.get('provider', '*')}, "
+                            f"thấy {[m.selector for m in hits]}. Ghim `provider` trong models.json")
+    return hits[0].selector
+
 b["models"] = {r: await pick(r) for r in
                ("engine", "qc", "code-reviewer", "devops", "verifier", "documenter")}
 ```
 
 Never index into `find_models` by position, and never hardcode the selector string either -
-pin the model **id** you want and let `find_models` resolve its provider prefix. A wrong
-index fails silently: the child runs an older model and nothing in the board says so.
+pin the model **id** in `models.json` and let `find_models` resolve its provider prefix. A wrong
+index fails silently: the child runs an older model and nothing in the board says so. `rlm.spawn`
+does not fall back either: an unavailable exact selector fails the spawn.
 
 Children run the per-role model on the board (engine DeepSeek, documenter Gemini, the rest Sonnet). You keep the session's own model - the strong one - because the
 decisions live here: reading two reviewers' findings against each other, deciding rework vs
@@ -490,8 +496,9 @@ each other's reply - two reviewers that agree because one read the other are one
 - Results never come back as a return value. Everything is a message or a file on disk.
 - Reach is parent, siblings and direct children (see Async contract). Policy narrows it: a child
   talks to its parent only.
-- Default recursion depth lets you create children; your children cannot create their own, so
-  grandchildren never exist.
+- `RLM_MAX_DEPTH` defaults to 2, so the platform lets a child spawn a grandchild. "A child never
+  spawns" is a rule in every brief (`FRAME`), not a platform limit. Watch for a breach in the
+  child's `recent_messages`.
 - `agent_observe` sees only family in the same worker. A root session in another worker can
   be messaged but not observed - prefer children you spawned for anything you must track.
 - Only create a persistent `goal` when the user explicitly asks for one.
