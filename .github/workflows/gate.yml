@@ -11,4 +11,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Cùng lệnh với mục "Gate đầy đủ" trong CLAUDE.md. Mỗi lệnh một đối số, chạy qua run-gate.sh.
-      - run: scripts/run-gate.sh "bash scripts/check-docs.sh --self-test" "bash scripts/check-docs.sh" "bash scripts/check-pins.sh --self-test" "python3 scripts/check-downgrade.py --self-test" "python3 skills/orchestrator/scripts/board.py demo"
+      - run: scripts/run-gate.sh "bash scripts/check-docs.sh --self-test" "bash scripts/check-docs.sh" "bash scripts/check-pins.sh --self-test" "python3 scripts/check-downgrade.py --self-test" "bash scripts/check-tags.sh --self-test" "python3 skills/orchestrator/scripts/board.py demo"

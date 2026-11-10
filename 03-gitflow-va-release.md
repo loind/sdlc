@@ -53,7 +53,7 @@ gitGraph
 | `TEST-<n>` | CI, job nhánh `test` | SAU khi gate xanh | Bản thử trên cụm test. Chỉ repo thư viện có. |
 
 - `<n>` thường là số build của job CI. Build đỏ vẫn chiếm số, nên dãy tag nhảy cóc là bình thường.
-- **Tag là bất biến.** Không dời tag đã có. **Không bao giờ gắn tag tay**: nếu cần số mới, chạy lại job để lấy số kế tiếp.
+- **Tag là bất biến.** Không dời tag đã có. **Không bao giờ gắn tag tay**: nếu cần số mới, chạy lại job để lấy số kế tiếp. Script mẫu [`scripts/check-tags.sh`](scripts/check-tags.sh) (có `--self-test`) bắt tag sai mẫu, tag chỉ có ở local và tag bị dời so với remote. Nó không phân biệt được tag trên remote do CI hay người đẩy lên: việc chỉ cho CI tạo `MASTER-*` và `TEST-*` do quyền trên remote (protected tags) đảm bảo.
 - Số tag của các repo khác nhau KHÔNG song song. Đối chiếu bằng lệnh liệt kê tag của từng repo.
 
 ## Luật chung
