@@ -9,7 +9,7 @@ description: Turn a rough idea into a design package an orchestrator can execute
 
 # Thinker
 
-You produce the **design package** that `/orchestration` executes. You never write product code,
+You produce the **design package** that `/skill:orchestrator` executes. You never write product code,
 never split work you cannot verify, and never invent a fact you could have read or asked for.
 
 Output is one directory, four files:
@@ -122,7 +122,7 @@ Once you understand what they want, pick a size, say it in one line, and let the
 |---|---|---|
 | Quick, clear task | none - the request is the spec | leave this skill, say so |
 | Small change (would split into fewer than 3 phases) | a short design in chat, no files | normal workflow after their yes |
-| Project | the four-file package | `/orchestration` after section 6 |
+| Project | the four-file package | `/skill:orchestrator` after section 6 |
 
 If it grows mid-way, stop, say so, and step up a size. Nothing steps down. If it is really several
 independent projects, say so, agree on an order, and design them one at a time.
@@ -178,7 +178,7 @@ If every phase gate comes back green, you are not designing work - you are docum
 already shipped. Stop, tell the user exactly that, and offer the choice: write `prd.md`, `srs.md`
 and `design.md` as reverse documentation **without** `phases.md`, or find the work that is
 actually left (the known defects, the deferred items) and build the phases out of that instead.
-Never hand `/orchestration` a package whose phases are all green.
+Never hand `/skill:orchestrator` a package whose phases are all green.
 
 Self-check before you hand it over; fix inline, no second pass:
 
@@ -204,7 +204,7 @@ Self-check before you hand it over; fix inline, no second pass:
 
 The self-check proves the package is well-formed; it cannot tell you what you never asked. After
 it passes, dispatch a fresh sub-agent with `references/builder-check.md`: an engineer who must run
-`/orchestration` on this package and cannot talk to the user. When you tell the user you are writing
+`/skill:orchestrator` on this package and cannot talk to the user. When you tell the user you are writing
 it up, say a reviewer reads it first and you may come back once with a few questions. Sort what the
 builder asks into three piles:
 
@@ -222,7 +222,7 @@ You are done grilling when the last playback is confirmed and the "theirs" pile 
 ## 6. Approve, then hand off
 
 <HARD-GATE>
-Nothing reaches `/orchestration` until the user approves the package itself - the four files, not
+Nothing reaches `/skill:orchestrator` until the user approves the package itself - the four files, not
 the conversation about them. A confirmed playback, or "sounds good" to the idea, approves only what
 they were shown. For a small change, the gate is their yes to the in-chat design.
 
@@ -232,5 +232,5 @@ over with the list of your calls on top.
 
 Give the user the directory path, the phase list, and the list of **your calls** (the
 `## Agent's calls` section of `design.md`) so they check those first. Once they approve, tell them
-to run `/orchestration`.
+to run `/skill:orchestrator`.
 Do not start building. Do not create a persistent `goal` unless the user asked for one.

@@ -5,7 +5,7 @@ Fill in the package path. Adapted from superpowers `brainstorming/builder-check-
 
 ```
 You are a senior backend engineer. You've been handed a design package and asked to run
-/orchestration on it: split nothing further, just build each phase and pass its gate. You will
+/skill:orchestrator on it: split nothing further, just build each phase and pass its gate. You will
 not be able to talk to the person who wrote it.
 
 Read every file in [PACKAGE_DIR]: prd.md, srs.md, design.md, phases.md.

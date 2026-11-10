@@ -62,7 +62,7 @@ images; secrets are never printed.
 ## Start: read the design package
 
 **No `phases.md` on disk means you stop.** Look for `docs/design/*/phases.md`; if the user named a
-directory, use that one. Nothing there - tell the user to run `/thinker` first and end your turn.
+directory, use that one. Nothing there - tell the user to run `/skill:thinker` first and end your turn.
 Do not brainstorm, do not invent phases, do not "just start with something obvious". A phase split
 you improvise has no requirement ids behind it, so `qc` has nothing to grade and the whole pipeline
 degrades to one agent marking its own homework.
@@ -101,6 +101,9 @@ dispatching phase 1. Three outcomes:
 
 If the tests cannot run without something deployed, see **When tests need a deployed environment**.
 
+**Last init step: start the heartbeat** (see **Heartbeat and deadlines**), after the shared gate is green and
+before `dispatch` is called for phase 1. `dispatch` refuses to run without it.
+
 ## Heartbeat and deadlines
 
 A child that goes quiet is the failure this section exists to prevent. Two rules, both mandatory.
@@ -124,25 +127,34 @@ documenter 20.
 
 **2. A heartbeat checks every child every 5 minutes**, from init until the last child has
 reported. Use the agent-internal `rlm-heartbeat` skill (not the user's `/heartbeat`). Start it at
-init, before dispatching phase 1, and keep its id on the board:
+init, before dispatching phase 1, and keep its id on the board. `dispatch` refuses to run until it
+is there:
 
 ```python
+WATCH_INSTRUCTION = """\
+Orchestrator watchdog. Run this check once, then stay silent unless something changed.
+1. Reload the board from disk: b = bd.load() (`import board as bd` from .agents/skills/orchestrator/scripts if it is not loaded).
+2. For every child dispatched and not finally reported - the names in b["deadlines"]; bd.overdue(b) lists the late ones:
+   call agent_observe.get_agent(name) and agent_observe.recent_messages(name, limit=6), and compare the age of its last message with its deadline.
+3. List processes at >= 90% CPU for more than 5 minutes: ps -Ao pid,etime,pcpu,command
+Then act, per child, in this order:
+ a. A runaway process of the child (match it to the child's worktree: lsof -p <pid> | grep cwd): kill the process, never the child. Tell the child what was killed and why, and remind it to bound its commands.
+ b. Past its deadline, or silent for more than 10 minutes: send ONE message asking for its report now, with what it has.
+ c. Still silent at the next heartbeat: bd.block(b, phase_id, reason), bd.save(b), and tell the user. Never delete the child.
+Do not stop this heartbeat while any phase is open or any child owes a report.
+Report to the user in Vietnamese with full diacritics, naming the child, the phase and the command or error. Keep status tokens, paths and commands in English.
+"""
 hb = await rlm_heartbeat.create(WATCH_INSTRUCTION, interval="5m",
                                 label="orchestration-watch", delivery_mode="follow_up")
 bd.set_heartbeat(b, hb["heartbeat"]["id"])
 bd.save(b)
 ```
 
-`WATCH_INSTRUCTION` tells each heartbeat turn to: read the board; for every child dispatched and
-not finally reported, call `agent_observe.get_agent` and `recent_messages` and compare the age of
-its last message with its deadline; list processes at >= 90% CPU for more than 5 minutes
-(`ps -Ao pid,etime,pcpu,command`). The ladder:
-
-1. A runaway process of the child: kill the process (not the child), tell the child what was
-   killed and why, and remind it to bound its commands.
-2. Past the deadline, or silent for more than 10 minutes: send ONE message asking for a report now.
-3. Still silent at the next heartbeat: `bd.block(...)` the phase and tell the user. Never delete
-   the child: children are kept until the run ends.
+`delivery_mode="follow_up"` makes a heartbeat wait for the orchestrator's current turn to finish; the
+default, `"steer"`, would interrupt it. `WATCH_INSTRUCTION` is the whole ladder, so a heartbeat turn
+needs nothing else in context: a runaway process of the child is killed (never the child), a late or
+silent child gets one nudge, a child still silent at the next heartbeat blocks its phase. Children are
+kept until the run ends.
 
 The heartbeat stays silent when nothing changed. Stop it only when every phase is `done` and no
 child is `running` - devops, verifier and documenter are children too, so it outlives the last
@@ -320,6 +332,7 @@ import board as bd
 BUDGET_MIN = {"engine": 45, "qc": 20, "code-reviewer": 20, "devops": 20, "verifier": 30, "documenter": 20}
 
 async def dispatch(role, phase, brief, board):
+    assert board.get("heartbeat"), "start the heartbeat first (see Heartbeat and deadlines)"
     name = child_name(role, phase)
     due = bd.set_deadline(board, name, BUDGET_MIN[role])        # absolute, from the machine clock
     mid, tail = due - timedelta(minutes=BUDGET_MIN[role] / 2), due + timedelta(minutes=5)
@@ -335,6 +348,7 @@ async def dispatch(role, phase, brief, board):
     return name          # no child answer exists yet: it arrives later as a message
 ```
 
+`dispatch` refuses to run until the heartbeat is on the board, so no child is ever dispatched unwatched.
 A reused child gets the new deadline in the same message, so the board and the child never disagree.
 `rlm.spawn(...)` returns a handle once the child is admitted, never its answer. After `dispatch`,
 **end your turn** and wait for the message. Do not poll, do not sleep, do not treat a return value as
