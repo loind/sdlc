@@ -1,7 +1,7 @@
 ---
 name: diagnosing-bugs
 description: Diagnosis loop for hard bugs and performance regressions. Use when the user says "diagnose"/"debug this", or reports something broken/throwing/failing/slow.
-compatibility: Needs a way to run the failing behaviour: the project's test runner, curl or a CLI, and git when bisecting. scripts/hitl-loop.template.sh needs bash. Redact secrets in any output shown.
+compatibility: Needs a way to run the failing behaviour (the project's test runner, curl or a CLI), and git when bisecting. scripts/hitl-loop.template.sh needs bash. Redact secrets in any output shown.
 ---
 
 # Diagnosing Bugs

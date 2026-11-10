@@ -23,16 +23,26 @@ def frontmatter(text):
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         raise ValueError("thiếu frontmatter (dòng đầu phải là ---)")
-    out, key = {}, None
-    for line in lines[1:]:
+    out, key, problems = {}, None, []
+    for n, line in enumerate(lines[1:], 2):
         if line.strip() == "---":
-            return {k: clean(v) for k, v in out.items()}
+            return {k: clean(v) for k, v in out.items()}, problems
         if line and not line[0].isspace() and ":" in line:
             key, _, val = line.partition(":")
             out[key.strip()] = val.strip()
+            if plain_scalar_breaks_yaml(val.strip()):
+                problems.append(f"dòng {n}: giá trị của `{key.strip()}` có `: ` hoặc ` #` mà không có dấu nháy, YAML đọc sai "
+                                "(Nested mappings are not allowed). Đặt cả giá trị trong dấu nháy kép hoặc bỏ dấu `:`")
         elif key and line.strip():
             out[key] = f"{out[key]} {line.strip()}"  # dòng nối tiếp của khối > hoặc |
     raise ValueError("frontmatter không đóng (thiếu --- thứ hai)")
+
+
+def plain_scalar_breaks_yaml(val):
+    """Giá trị một dòng, không nháy, không phải khối (> |) hay danh sách: `: ` mở mapping lồng, ` #` mở comment."""
+    if not val or val[0] in "\"'>|[{&*!%@":
+        return False
+    return ": " in val or " #" in val or val.endswith(":")
 
 
 def clean(value):
@@ -43,10 +53,10 @@ def clean(value):
 def check_skill(path):
     """Trả về danh sách lỗi của một SKILL.md (rỗng = đạt)."""
     try:
-        fm = frontmatter(path.read_text(encoding="utf-8"))
+        fm, errs = frontmatter(path.read_text(encoding="utf-8"))
     except ValueError as e:
         return [str(e)]
-    errs, want = [], path.parent.name
+    want = path.parent.name
     name = fm.get("name", "")
     if not name:
         errs.append("thiếu name")
@@ -98,6 +108,12 @@ def self_test():
         ("thiếu description", "---\nname: good\ncompatibility: c\n---\n", "thiếu description"),
         ("không có frontmatter", "# chỉ có thân bài\n", "thiếu frontmatter"),
         ("frontmatter không đóng", "---\nname: good\n", "không đóng"),
+        ("compatibility không nháy có ': '", ok.format(n="good", d="d", c="Needs a way: the runner"), "Nested mappings"),
+        ("description không nháy có ' #'", ok.format(n="good", d="a # b", c="c"), "Nested mappings"),
+        ("giá trị không nháy kết thúc bằng ':'", ok.format(n="good", d="d", c="Needs these:"), "Nested mappings"),
+        ("giá trị có ': ' nhưng trong nháy kép", ok.format(n="good", d="d", c='"Needs a way: the runner"'), None),
+        ("giá trị có ': ' trong khối >", "---\nname: good\ndescription: >\n  a: b\ncompatibility: c\n---\n", None),
+        ("URL có :// không phải mapping", ok.format(n="good", d="d", c="See https://example.com/x"), None),
         ("name viết hoa và gạch dưới", ok.format(n="Bad_Name", d="d", c="c"), "sai quy tắc", "Bad_Name"),
         ("name có hai gạch ngang liền nhau", ok.format(n="a--b", d="d", c="c"), "sai quy tắc", "a--b"),
         ("name dài hơn 64 ký tự", ok.format(n="a" * 65, d="d", c="c"), "sai quy tắc", "a" * 65),
