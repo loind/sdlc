@@ -1,5 +1,6 @@
 """Task board for the orchestrator skill. Single writer: the orchestrator session."""
 
+import hashlib
 import json
 import os
 import re
@@ -142,6 +143,37 @@ def next_phase(board):
     return next((p for p in board.get("phases", []) if p["status"] != "done"), None)
 
 
+def advisor_draft(board, phase_id, draft_path, max_words=1500):
+    """True when this draft has not gone to the advisor yet (and records it), False for one already sent.
+
+    The advisor is advice, not a board state: this never touches status or round, so a rework round after a
+    qc/code-review FAIL (same draft) can never re-dispatch it. A draft over max_words is refused.
+    """
+    text = Path(draft_path).read_text(encoding="utf-8")
+    words = len(text.split())
+    assert words <= max_words, f"draft {draft_path} has {words} words, limit {max_words}: send it back to be cut"
+    phase = next(p for p in board["phases"] if p["id"] == phase_id)
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    if phase.get("advisor_draft") == digest:
+        return False
+    phase["advisor_draft"] = digest
+    log(board, f"phase {phase_id}: advisor draft {digest} ({words} words)")
+    return True
+
+
+def advisor_unavailable(board, phase_id, reason):
+    """The advisor could not run (host refuses xhigh, provider down, silent): note it and let the engine go on.
+
+    Never blocks the phase: no status change, no block(). Also drops the advisor's deadline so the heartbeat
+    stops watching it.
+    """
+    phase = next(p for p in board["phases"] if p["id"] == phase_id)
+    note = f"advisor unavailable: {reason}"
+    phase["notes"] = f"{phase['notes']}; {note}" if phase.get("notes") else note
+    clear_deadline(board, f"advisor-p{phase_id}-draft")  # same name as child_name("advisor", phase) in SKILL.md
+    log(board, f"phase {phase_id}: {note}")
+
+
 def set_deadline(board, child, minutes, now=None):
     """Final-report deadline for a child: absolute, from the machine clock, never a guess.
 
@@ -269,6 +301,37 @@ def _demo_ops():
     assert next_adr(_new(), "/nonexistent/adr") == "0001", "a missing adr_dir means no ADR yet"
 
 
+def _demo_advisor():
+    b = _new()
+    one = add_phase(b, "p", req_ids=["REQ-001"])
+    with tempfile.TemporaryDirectory() as d:
+        draft = Path(d) / "draft.md"
+        draft.write_text("kế hoạch một", encoding="utf-8")
+        assert advisor_draft(b, one, draft) is True, "first draft goes to the advisor"
+        assert advisor_draft(b, one, draft) is False, "the same draft must not be sent twice"
+        advance(b, one); advance(b, one)  # engine -> review
+        advance(b, one, rework=True, note="qc FAIL")
+        assert advisor_draft(b, one, draft) is False, "a rework round after a FAIL is not a new draft"
+        assert b["phases"][0]["round"] == 2 and b["phases"][0]["status"] == "engine", \
+            "advisor_draft must leave status and round to the reviewers"
+        draft.write_text("kế hoạch hai", encoding="utf-8")
+        assert advisor_draft(b, one, draft) is True, "a rewritten draft is new"
+        draft.write_text("từ " * 1501, encoding="utf-8")
+        assert _rejects(advisor_draft, b, one, draft), "a draft over 1500 words must be refused"
+        assert advisor_draft(b, one, draft, max_words=2000) is True, "the ceiling is a parameter"
+
+    set_deadline(b, "advisor-p1-draft", 20)
+    ph = b["phases"][0]
+    before = (ph["status"], ph["round"])
+    advisor_unavailable(b, one, "host rejects xhigh")
+    assert (ph["status"], ph["round"]) == before, "advisor unavailable must not move or block the phase"
+    assert "blocked_reason" not in ph and ph["notes"].endswith("advisor unavailable: host rejects xhigh")
+    assert "advisor-p1-draft" not in b["deadlines"], "the heartbeat must stop watching a dead advisor"
+    assert "advisor unavailable" in b["log"][-1]["event"]
+    advisor_unavailable(b, one, "provider down")
+    assert ph["notes"].count("advisor unavailable") == 2, "notes accumulate, never overwrite"
+
+
 def demo():
     b = {"goal": "g", "design_dir": "docs/design/x", "gate": ["pytest -q"], "phases": [],
          "agents": {}, "models": {}, "log": []}
@@ -308,6 +371,7 @@ def demo():
     assert _rejects(advance, b, two, rework=True), "rework from pending must fail"
     _demo_storage()
     _demo_ops()
+    _demo_advisor()
     print("ok")
 
 
