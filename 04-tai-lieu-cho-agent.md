@@ -97,7 +97,7 @@ Quy ước:
 - **Phạm vi quét:** tài liệu sống VÀ mã nguồn (chú thích trong mã cũng đếm). **Miễn quét:** `docs/adr` (kèm lý do lịch sử), `docs/design` (có ngày), board, test chứng minh cách cũ đã bỏ, chính script.
 - Hệ quả: tài liệu sống không được nhắc tên cũ, **kể cả để nói "tên cũ đã bỏ"**. Viết vòng ("tên của đợt trước đã đổi ở ticket #16") và để danh sách tên cũ ở ADR.
 - Gate này dùng `git grep`, nên **không thấy file chưa commit**. File mới viết sẽ "xanh giả". Thử trên bản đã commit.
-- Chứng minh cổng không rỗng: thêm tạm một tên đã bỏ vào một tài liệu sống. Cổng phải đỏ kèm `file:dòng`. Rồi bỏ nó đi.
+- Chứng minh cổng không rỗng: `scripts/check-docs.sh --self-test` làm việc đó trong một repo tạm. Nó cắm một mẫu mồi vào tài liệu sống (cổng phải đỏ kèm `file:dòng`), bỏ mồi đi (cổng xanh lại), và ép `git grep` lỗi (cổng phải exit 2, không được báo OK giả). Chạy nó trong gate để cổng không âm thầm hỏng.
 - Chạy lại cổng SAU khi engine sửa mã xong: một dòng chú thích trong mã cũng làm đỏ.
 
 Mẫu: [`mau/check-docs-mau.sh`](mau/check-docs-mau.sh).

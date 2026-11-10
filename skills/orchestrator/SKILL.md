@@ -1,6 +1,7 @@
 ---
 name: orchestrator
 description: Execute a design package across agent sessions - engine builds each phase, qc and code-reviewer grade it in parallel, a real gate command closes it, then devops deploys, verifier runs system-wide e2e and security, and documenter updates the docs - all recorded on a persistent task board. Requires a design package from the thinker skill; it does not design the work itself. Use when the user asks to execute or orchestrate a plan across agents, run a build/review/gate loop per phase, coordinate subagents, or check the status of dispatched work.
+compatibility: Needs Prime Agent (rlm.spawn, agent_message, agent_observe, rlm_heartbeat), Python 3 for scripts/board.py, git, and a design package written by the thinker skill. Reads models.json for the role-to-model table.
 ---
 
 # Orchestrator
@@ -31,10 +32,37 @@ you the easier one twice.
 `devops` deploys, `verifier` judges. Never let one session do both - the session that deployed
 has a reason to call the deploy fine.
 
+## Async contract
+
+Everything between sessions is asynchronous. `await rlm.spawn(...)` returns a handle once the child
+is *admitted*; the child's answer never comes back as a return value. It arrives later as a message
+(`agent_message`) or as a file. A dispatch therefore always has the same four beats:
+
+1. `dispatch(...)` - hand the brief over, write child + deadline on the board, `bd.save(b)`.
+2. End your turn. Do not poll, sleep or `await` anything that waits for the child.
+3. Wait for the message. It is your next input.
+4. Read its first line (`DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_CONTEXT`), advance the board, save.
+
+Who can reach whom (`agent_message.send`: `receiver_role` is `parent`, `sibling` or `child`, and the
+last two need `receiver_name`):
+
+| From | To | Allowed |
+|---|---|---|
+| orchestrator | child | yes: briefs, rework, `NEEDS_CONTEXT` answers, report-now nudges |
+| child | parent | yes, and only this: PROGRESS lines and the final report |
+| child | sibling | no: qc and code-reviewer must not see each other's reply |
+| child | its own child | no, by rule: the platform default would allow it (see Limits), so `FRAME` forbids it |
+
+Every brief carries `FRAME` (see Role briefs): the final report starts with one of four untranslated
+tokens; deadlines are absolute times from the machine clock; every command that can hang is bounded
+(`timeout` on Linux, `perl -e 'alarm <s>; exec @ARGV' <cmd>` on macOS) and `curl` always has `-m 10`;
+free disk is checked before a big build; a child deletes only the project's build cache and Docker
+images; secrets are never printed.
+
 ## Start: read the design package
 
 **No `phases.md` on disk means you stop.** Look for `docs/design/*/phases.md`; if the user named a
-directory, use that one. Nothing there - tell the user to run `/thinker` first and end your turn.
+directory, use that one. Nothing there - tell the user to run `/skill:thinker` first and end your turn.
 Do not brainstorm, do not invent phases, do not "just start with something obvious". A phase split
 you improvise has no requirement ids behind it, so `qc` has nothing to grade and the whole pipeline
 degrades to one agent marking its own homework.
@@ -73,13 +101,18 @@ dispatching phase 1. Three outcomes:
 
 If the tests cannot run without something deployed, see **When tests need a deployed environment**.
 
+**Last init step: start the heartbeat** (see **Heartbeat and deadlines**), after the shared gate is green and
+before `dispatch` is called for phase 1. `dispatch` refuses to run without it.
+
 ## Heartbeat and deadlines
 
 A child that goes quiet is the failure this section exists to prevent. Two rules, both mandatory.
 
 **1. Every task carries a hard deadline.** Take the time from the machine clock (`datetime.now()`),
 then give the child three absolute times in the brief: a `PROGRESS:` line, the final report, and
-cleanup. Record them on the board (`b["deadlines"][child_name] = "HH:MM"`). Suggested budgets, tune
+cleanup. Record the final-report deadline with `bd.set_deadline(b, child_name, minutes)` (it reads the machine
+clock and returns the datetime to print as HH:MM in the brief); `bd.clear_deadline(b, child_name)` when
+that child's final report arrives, and `bd.overdue(b)` lists the late ones. Suggested budgets, tune
 per repo: engine 45 min per phase, qc and code-reviewer 20 min per round, devops 20, verifier 30,
 documenter 20.
 
@@ -94,32 +127,42 @@ documenter 20.
 
 **2. A heartbeat checks every child every 5 minutes**, from init until the last child has
 reported. Use the agent-internal `rlm-heartbeat` skill (not the user's `/heartbeat`). Start it at
-init, before dispatching phase 1, and keep its id on the board:
+init, before dispatching phase 1, and keep its id on the board. `dispatch` refuses to run until it
+is there:
 
 ```python
+WATCH_INSTRUCTION = """\
+Orchestrator watchdog. Run this check once, then stay silent unless something changed.
+1. Reload the board from disk: b = bd.load() (`import board as bd` from .agents/skills/orchestrator/scripts if it is not loaded).
+2. For every child dispatched and not finally reported - the names in b["deadlines"]; bd.overdue(b) lists the late ones:
+   call agent_observe.get_agent(name) and agent_observe.recent_messages(name, limit=6), and compare the age of its last message with its deadline.
+3. List processes at >= 90% CPU for more than 5 minutes: ps -Ao pid,etime,pcpu,command
+Then act, per child, in this order:
+ a. A runaway process of the child (match it to the child's worktree: lsof -p <pid> | grep cwd): kill the process, never the child. Tell the child what was killed and why, and remind it to bound its commands.
+ b. Past its deadline, or silent for more than 10 minutes: send ONE message asking for its report now, with what it has.
+ c. Still silent at the next heartbeat: bd.block(b, phase_id, reason), bd.save(b), and tell the user. Never delete the child.
+Do not stop this heartbeat while any phase is open or any child owes a report.
+Report to the user in Vietnamese with full diacritics, naming the child, the phase and the command or error. Keep status tokens, paths and commands in English.
+"""
 hb = await rlm_heartbeat.create(WATCH_INSTRUCTION, interval="5m",
                                 label="orchestration-watch", delivery_mode="follow_up")
-b["heartbeat"] = hb["heartbeat"]["id"]
+bd.set_heartbeat(b, hb["heartbeat"]["id"])
 bd.save(b)
 ```
 
-`WATCH_INSTRUCTION` tells each heartbeat turn to: read the board; for every child dispatched and
-not finally reported, call `agent_observe.get_agent` and `recent_messages` and compare the age of
-its last message with its deadline; list processes at >= 90% CPU for more than 5 minutes
-(`ps -Ao pid,etime,pcpu,command`). The ladder:
-
-1. A runaway process of the child: kill the process (not the child), tell the child what was
-   killed and why, and remind it to bound its commands.
-2. Past the deadline, or silent for more than 10 minutes: send ONE message asking for a report now.
-3. Still silent at the next heartbeat: `bd.block(...)` the phase and tell the user. Do not delete
-   the child before telling the user.
+`delivery_mode="follow_up"` makes a heartbeat wait for the orchestrator's current turn to finish; the
+default, `"steer"`, would interrupt it. `WATCH_INSTRUCTION` is the whole ladder, so a heartbeat turn
+needs nothing else in context: a runaway process of the child is killed (never the child), a late or
+silent child gets one nudge, a child still silent at the next heartbeat blocks its phase. Children are
+kept until the run ends.
 
 The heartbeat stays silent when nothing changed. Stop it only when every phase is `done` and no
 child is `running` - devops, verifier and documenter are children too, so it outlives the last
 phase:
 
 ```python
-await rlm_heartbeat.delete(b["heartbeat"])
+await rlm_heartbeat.delete(bd.clear_heartbeat(b))   # refuses while a phase is open or a child owes a report
+bd.save(b)
 ```
 
 ## Board
@@ -129,7 +172,7 @@ writer. Load it in the kernel once, then reuse the module:
 
 ```python
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path("~/.agents/skills/orchestrator/scripts").expanduser()))
+sys.path.insert(0, str(pathlib.Path(".agents/skills/orchestrator/scripts").resolve()))  # repo-local, cwd = repo root
 import board as bd
 
 b = bd.load()
@@ -153,6 +196,12 @@ Save after every transition - the board is the record, your context is not.
 `bd.unblock(b, id)` returns it there. `advance` refuses a blocked phase, so a parked phase
 cannot be closed by accident while the blocker is still there.
 
+The board carries `schema_version`: `load()` backfills keys an older board lacks and refuses a board
+written by a newer `board.py`. `save()` is atomic (tmp file, then rename), so a heartbeat reading the
+board never sees half a write. `bd.next_adr(b)` hands out the next ADR number and never reuses one the
+board issued or `docs/adr/` already holds: give each brief a different number and `bd.save(b)` at once
+to reserve it.
+
 ## Gate
 
 A phase reaches `done` only when a real command says so. `advance(..., gate=...)` refuses
@@ -166,12 +215,28 @@ b["gate"] = ["pytest -q", "ruff check ."]   # read from pyproject / package.json
 Run them yourself after **both** reviewers pass, shared gate first then the phase's own
 `phase_gate`, and advance with the combined results:
 
+Every gate command goes through `scripts/run-gate.sh` - never a raw `bash(cmd)`. The runner takes
+one simple command per argument and rejects `|`, `&&`, `;` and `&` with exit 2 (a pipe hides the red
+command's exit code), bounds each command with `TIMEOUT_SEC` (default 600), writes stdout+stderr to
+`GATE_LOG`, and prints `[gate n] EXIT=<code>: <cmd>`. You read that `EXIT=` line, not the shell
+status. The script is copied into the target repo (root `README.md`, section Gate).
+
 ```python
+import re, shlex
+from pathlib import Path
+
+async def run_gate(cmd, n):
+    log = Path(f".prime/orchestrator/gate-{n}.log")
+    log.unlink(missing_ok=True)              # a stale log must never read as a fresh green
+    await bash(f"GATE_LOG={log} scripts/run-gate.sh {shlex.quote(cmd)}")
+    exits = re.findall(r"^\[gate \d+\] EXIT=(\d+):", log.read_text(), re.M)
+    code = int(exits[-1]) if exits else 2    # no EXIT= line (REJECT, crash) is red
+    return {"cmd": cmd, "exit": code, "ok": code == 0}
+
 results = []
-for cmd in b["gate"] + phase.get("phase_gate", []):
-    r = await bash(cmd)
-    results.append({"cmd": cmd, "exit": r.exit_code, "ok": r.exit_code == 0})
-    if r.exit_code != 0:
+for n, cmd in enumerate(b["gate"] + phase.get("phase_gate", []), 1):
+    results.append(await run_gate(cmd, n))
+    if not results[-1]["ok"]:
         break   # fail fast: never spend a long stage on a build that already failed
 bd.advance(b, phase_id, gate=results)   # raises unless every command that ran passed
 ```
@@ -203,42 +268,45 @@ if everything else could run in parallel. Say which environment it targets in th
 
 ## Model routing
 
-Resolve selectors at runtime - never hardcode a model id. Store the choice on the board so
-every respawn of a role uses the same model:
+`models.json` (next to `scripts/`) holds the role-to-model table. Resolve the selector at runtime
+and store the choice on the board, so every respawn of a role uses the same model:
 
 ```python
-# find_models tra ve moi ban khop va thu tu KHONG phai moi-nhat-truoc: "sonnet" cho ra
-# claude-sonnet-4-5, 4-5-20250929, 4-6, 5 - lay [0] la lay 4.5. Loc theo id chinh xac.
-# Model theo vai (người dùng chốt 29/09/2026): engine = deepseek-v4-flash (provider deepseek),
-# documenter (viết/cập nhật tài liệu, rà câu chữ) = gemini-3.8-flash (google-vertex), còn lại Sonnet 5.5.
-WANT = {"engine": ("deepseek", "deepseek-v4-flash"),
-        "documenter": ("gemini-3.8", "gemini-3.8-flash"),
-        "*": ("sonnet", "claude-sonnet-5-5")}
+import json
+from pathlib import Path
+
+# find_models returns every match, newest NOT first: "sonnet" gives 4-5, 4-5-20250929, 4-6, 5, so
+# taking [0] silently picks 4.5. Match the exact id (and provider when pinned) and demand exactly one.
+# models.json (user decision 29/09/2026): engine = deepseek-v4-flash, documenter = gemini-3.8-flash,
+# every other role = claude-sonnet-5-5.
+TABLE = json.loads((Path(bd.__file__).parents[1] / "models.json").read_text(encoding="utf-8"))
+
 async def pick(role):
-    q, mid = WANT.get(role, WANT["*"])
-    sel = next((m.selector for m in await rlm.find_models(q) if m.id == mid), None)
-    assert sel, f"khong thay {mid}"
-    return sel
+    want = {**TABLE["default"], **TABLE["roles"].get(role, {})}
+    hits = [m for m in await rlm.find_models(want["query"], limit=50)   # default limit is 8
+            if m.id == want["id"] and m.provider == want.get("provider", m.provider)]
+    assert len(hits) == 1, (f"{role}: cần đúng 1 model id={want['id']} provider={want.get('provider', '*')}, "
+                            f"thấy {[m.selector for m in hits]}. Ghim `provider` trong models.json")
+    return hits[0].selector
+
 b["models"] = {r: await pick(r) for r in
                ("engine", "qc", "code-reviewer", "devops", "verifier", "documenter")}
 ```
 
 Never index into `find_models` by position, and never hardcode the selector string either -
-pin the model **id** you want and let `find_models` resolve its provider prefix. A wrong
-index fails silently: the child runs an older model and nothing in the board says so.
+pin the model **id** in `models.json` and let `find_models` resolve its provider prefix. A wrong
+index fails silently: the child runs an older model and nothing in the board says so. `rlm.spawn`
+does not fall back either: an unavailable exact selector fails the spawn.
 
 Children run the per-role model on the board (engine DeepSeek, documenter Gemini, the rest Sonnet). You keep the session's own model - the strong one - because the
 decisions live here: reading two reviewers' findings against each other, deciding rework vs
 done, deciding what a verifier finding becomes. A child works one scoped task with a clean context, which is where a fast model holds
 up. Leave the board's `models` per-role so one role can be raised later without touching
-this skill. Pass it on spawn:
+this skill. `dispatch` (see Resolve or spawn) passes it as `model=b["models"][role]`.
 
-```python
-await rlm(brief, name=role, model=b["models"][role], thinking="high")
-```
-
-`model` takes an exact `provider/model` selector, `thinking` defaults to the parent level and
-an invalid level for that model fails the spawn. Omit both to inherit the parent's.
+`model` takes an exact `provider/model` selector. `thinking` defaults to the parent level and an
+invalid level for that model fails the spawn, so `dispatch` leaves it out and every child
+inherits the parent's.
 
 ## Resolve or spawn
 
@@ -254,50 +322,76 @@ def child_name(role, phase):
 ```
 
 Then resolve-or-spawn is a plain lookup - a name that exists is reused, a name that does not
-is spawned:
+is spawned. `dispatch` is fire-and-forget: it records the child and its deadline, saves the board,
+and returns. It never waits for the child.
 
 ```python
+from datetime import timedelta
+import board as bd
+
+BUDGET_MIN = {"engine": 45, "qc": 20, "code-reviewer": 20, "devops": 20, "verifier": 30, "documenter": 20}
+
 async def dispatch(role, phase, brief, board):
+    assert board.get("heartbeat"), "start the heartbeat first (see Heartbeat and deadlines)"
     name = child_name(role, phase)
-    children = await rlm.list_subagents()
-    if any(c.session_name == name for c in children):
-        await agent_message.send(brief, receiver_role="child", receiver_name=name)
-        return name
-    await rlm(
-        f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{LANG}",   # LANG: xem Role briefs
-        name=name,
-        model=board.get("models", {}).get(role),
-    )
+    due = bd.set_deadline(board, name, BUDGET_MIN[role])        # absolute, from the machine clock
+    mid, tail = due - timedelta(minutes=BUDGET_MIN[role] / 2), due + timedelta(minutes=5)
+    frame = FRAME.format(tz=due.tzname(), progress=f"{mid:%H:%M}",     # FRAME, LANG: see Role briefs
+                         final=f"{due:%H:%M}", cleanup=f"{tail:%H:%M}")
+    if any(c.session_name == name for c in await rlm.list_subagents()):
+        await agent_message.send(f"{brief}\n\n{frame}", receiver_role="child", receiver_name=name)
+    else:
+        await rlm.spawn(f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{frame}\n\n{LANG}",
+                        name=name, model=board.get("models", {}).get(role))
     board.setdefault("agents", {})[role] = name
-    return name
+    bd.save(board)       # the board is the record, your context is not
+    return name          # no child answer exists yet: it arrives later as a message
 ```
 
-Once a phase is `done`, delete the children that served it so they stop accumulating - but
-only after `agent_observe.get_agent(name)` shows the child idle, because a delivered message
-may still be running:
+`dispatch` refuses to run until the heartbeat is on the board, so no child is ever dispatched unwatched.
+A reused child gets the new deadline in the same message, so the board and the child never disagree.
+`rlm.spawn(...)` returns a handle once the child is admitted, never its answer. After `dispatch`,
+**end your turn** and wait for the message. Do not poll, do not sleep, do not treat a return value as
+the child's result.
 
-```python
-await rlm.delete_subagent(child)
-```
-
-`rlm(...)` returns as soon as the child is admitted - it never returns the child's answer.
-Dispatch, write the board, end your turn. The child's reply arrives as a message later.
+**Keep every child until the run ends.** Do not call `rlm.delete_subagent` when a phase is `done`:
+the user wants to see every agent that took part, and the trace is in the verdict files and the
+ticket. Names are unique per phase and round, so idle children never collide.
 
 ## Role briefs
 
 Give each child only what its task needs, plus the reply contract. Every brief names
 `<design_dir>` so the child reads requirements from the package instead of from your paraphrase.
 
-Append this line to **every** brief - one place, so no role can be forgotten:
+Append `FRAME` and `LANG` to **every** brief - one place each, so no role can be forgotten.
+`dispatch` does it. `FRAME` is the shared safety and reporting contract; the deadline times in it
+come from the machine clock through `bd.set_deadline`:
 
 ```python
-LANG = ("Viet moi cau van xuoi bang tieng Viet co dau day du - bao cao, finding, handoff note, "
-        "ly do. Giu nguyen tieng Anh: status token (DONE, DONE_WITH_CONCERNS, BLOCKED, "
-        "NEEDS_CONTEXT, PROGRESS, PASS, FAIL), requirement id (REQ-xxx), duong dan file, lenh "
-        "shell, ten ham/bien, commit message, va thuat ngu ky thuat (cache, rollout, digest). "
-        "Khong dich status token - parent doc chung bang may.")
+FRAME = """\
+BẮT BUỘC TRƯỚC KHI LÀM
+- Đọc `CONTEXT.md`, mọi file trong `docs/adr/` và mục "Quy tắc cho agent" trong `CLAUDE.md` hoặc `AGENTS.md`. Việc được giao mâu thuẫn với một ADR: DỪNG, báo parent bằng NEEDS_CONTEXT.
 
-await rlm(f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{LANG}", name=name, model=...)
+AN TOÀN
+- Bọc mọi lệnh có thể treo bằng giới hạn giờ: Linux dùng `timeout <giây> <lệnh>`; macOS không có `timeout`, dùng `perl -e 'alarm <giây>; exec @ARGV' <lệnh>`. `curl` luôn có `-m 10`. Service chạy bằng `docker run -d`. Gate chạy qua `scripts/run-gate.sh` (script đã tự bọc giới hạn giờ).
+- Production và hệ thống thật chỉ được ĐỌC (GET). Không tạo, sửa, xoá.
+- Không in mật khẩu, token, khoá ra log, báo cáo hay file. Khi đọc secret chỉ in tên khoá và host:port.
+- Kiểm dung lượng đĩa trống trước khi build lớn. Thiếu đĩa: dừng và báo BLOCKED.
+- Chỉ được xoá cache build và image Docker của dự án này. Không xoá thứ gì khác. Báo cáo cuối liệt kê mọi thứ đã xoá.
+
+BÁO CÁO
+- Chỉ nhắn parent: `await agent_message.send(<tin>, receiver_role="parent")`. Không nhắn sibling (reviewer không được thấy nhau). KHÔNG sinh child con (không gọi `rlm.spawn`).
+- Báo cáo cuối có dòng đầu là MỘT trong 4 token: DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT. Không dịch. PROGRESS chỉ là tin giữa chừng, không thay báo cáo cuối. Gửi một dòng PROGRESS trước mọi bước kéo dài quá vài phút.
+- BLOCKED chỉ dùng cho thứ bạn không tự gỡ được: host, cụm, registry không tới được; thiếu quyền; thiếu công cụ. Test đỏ, lỗi biên dịch, phát hiện review là CÔNG VIỆC, không phải BLOCKED.
+- DEADLINE (giờ máy, múi giờ {tz}): PROGRESS lúc {progress}, báo cáo cuối chậm nhất lúc {final}, dọn dẹp xong lúc {cleanup}. Hết deadline bạn PHẢI báo cáo, dù chưa xong: gửi cái đã có với DONE_WITH_CONCERNS (hoặc BLOCKED) kèm việc chưa làm. Im lặng quá deadline là vi phạm. Cần thêm giờ: gửi PROGRESS xin gia hạn trước deadline và chờ parent trả lời, không tự kéo dài.
+- Kẹt trong một lệnh thì không chờ vô hạn: lệnh chạy quá 5 phút không có kết quả thì dừng nó, gửi PROGRESS và đi tiếp.
+"""
+
+LANG = ("Viết mọi câu văn xuôi bằng tiếng Việt có dấu đầy đủ: báo cáo, phát hiện, ghi chú bàn giao, "
+        "lý do. Giữ nguyên tiếng Anh: status token (DONE, DONE_WITH_CONCERNS, BLOCKED, "
+        "NEEDS_CONTEXT, PROGRESS, PASS, FAIL), mã yêu cầu (REQ-xxx), đường dẫn file, lệnh "
+        "shell, tên hàm/biến, commit message và thuật ngữ kỹ thuật (cache, rollout, digest). "
+        "Không dịch status token: parent đọc chúng bằng máy.")
 ```
 
 Dịch một status token là làm hỏng `advance()`: parent đọc chữ đầu dòng, không đọc ý.
@@ -415,8 +509,11 @@ each other's reply - two reviewers that agree because one read the other are one
 ## Limits
 
 - Results never come back as a return value. Everything is a message or a file on disk.
-- Reach is parent, siblings, and direct children only. Grandchildren relay through their parent.
-- Default recursion depth lets you create children; your children cannot create their own.
+- Reach is parent, siblings and direct children (see Async contract). Policy narrows it: a child
+  talks to its parent only.
+- `RLM_MAX_DEPTH` defaults to 2, so the platform lets a child spawn a grandchild. "A child never
+  spawns" is a rule in every brief (`FRAME`), not a platform limit. Watch for a breach in the
+  child's `recent_messages`.
 - `agent_observe` sees only family in the same worker. A root session in another worker can
   be messaged but not observed - prefer children you spawned for anything you must track.
 - Only create a persistent `goal` when the user explicitly asks for one.

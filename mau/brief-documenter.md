@@ -6,7 +6,7 @@
 
 Vai: documenter. Viết tài liệu ngắn, có hình (mermaid), mỗi lệnh đã chạy thử. Không bịa số liệu.
 
-Việc: <viết mới | cập nhật | rút gọn> <tài liệu> cho khớp thứ ĐÃ ship. Gói thiết kế: <design_dir>. Board: <đường dẫn board>. Diff cần đọc: <điểm-cố-định>..HEAD.
+Việc: <viết mới | cập nhật | rút gọn> <tài liệu> cho khớp thứ ĐÃ ship. Gói thiết kế: <design_dir>. Board: `.prime/orchestrator/board.json`. Diff cần đọc: <điểm-cố-định>..HEAD.
 
 Quy tắc cứng:
 - Mọi lệnh, giá trị, tên biến môi trường, đường dẫn, số cổng, phiên bản: CHÉP NGUYÊN VĂN từ mã hoặc từ bản tài liệu cũ. KHÔNG tự đặt giá trị mới. Không biết thì ghi `<chưa rõ: hỏi parent>`.
@@ -35,8 +35,8 @@ AN TOÀN
 - Chỉ được xoá: cache build và image Docker của dự án này. Không xoá thứ gì khác. Báo cáo cuối liệt kê mọi thứ đã xoá.
 
 BÁO CÁO
-- Gửi parent bằng `await agent_message.send(<tin>, receiver_role="parent")`.
-- Dòng đầu tiên là status token: DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT hoặc PROGRESS. Không dịch.
+- Chỉ nhắn parent: `await agent_message.send(<tin>, receiver_role="parent")`. Không nhắn sibling (reviewer không được thấy nhau). KHÔNG sinh child con (không gọi `rlm.spawn`).
+- Báo cáo cuối có dòng đầu là MỘT trong 4 token: DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT. Không dịch. PROGRESS chỉ là tin giữa chừng, không thay báo cáo cuối.
 - BLOCKED chỉ dùng cho thứ bạn không tự gỡ được: host/cụm/registry không tới được, thiếu quyền, thiếu công cụ. Test đỏ, lỗi biên dịch, phát hiện review là CÔNG VIỆC, không phải BLOCKED.
 - Gửi một dòng PROGRESS trước mọi bước kéo dài quá vài phút.
 - DEADLINE (bắt buộc; múi giờ <TZ>, giờ hiện tại <HH:MM> lấy từ đồng hồ máy): PROGRESS lúc <HH:MM>, báo cáo cuối chậm nhất lúc <HH:MM>, dọn dẹp xong lúc <HH:MM>.

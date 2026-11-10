@@ -1,6 +1,6 @@
 # Skill đã dùng trong quy trình
 
-Mỗi thư mục là một skill nguồn, **giữ nguyên nội dung gốc** (tiếng Anh, không dịch). Cài bằng cách chép thư mục vào nơi công cụ agent của bạn đọc skill (ví dụ `~/.agents/skills/`).
+Mỗi thư mục là một skill nguồn, **giữ nguyên nội dung gốc** (tiếng Anh, không dịch). Cài repo-local: chép từng thư mục vào `.agents/skills/` ở gốc repo của dự án (Prime Agent đọc thư mục này từ `cwd` lên tới git root) và commit cùng mã, để skill được review và đúng phiên bản với repo. Công cụ agent khác: dùng thư mục skill cấp repo của công cụ đó.
 
 | Skill | Dùng ở bước | Một dòng |
 |---|---|---|
@@ -19,10 +19,11 @@ Mỗi thư mục là một skill nguồn, **giữ nguyên nội dung gốc** (ti
 
 ## Lưu ý
 
-- `orchestrator/SKILL.md` có bảng model theo vai và vài đường dẫn của môi trường gốc (ví dụ `~/.agents/skills/...`). Chỉnh theo môi trường của bạn. Tên lệnh spawn và gửi tin phụ thuộc công cụ agent.
-- `orchestrator/scripts/board.py` chỉ cần Python 3, không phụ thuộc gói ngoài. Chạy `python3 board.py` để chạy bộ kiểm tự thân (`demo()` in `ok`).
+- Bảng model theo vai nằm ở `orchestrator/models.json` (engine `deepseek-v4-flash`, documenter `gemini-3.8-flash`, còn lại `claude-sonnet-5-5`). `orchestrator/SKILL.md` giả định cài repo-local tại `.agents/skills/orchestrator/` và chạy với `cwd` là gốc repo (board nằm ở `.prime/orchestrator/board.json` tính từ đó). Tên lệnh spawn và gửi tin phụ thuộc công cụ agent.
+- `orchestrator/scripts/board.py` chỉ cần Python 3, không phụ thuộc gói ngoài. Chạy `python3 scripts/board.py demo` trong thư mục `orchestrator` để chạy bộ kiểm tự thân (`demo()` in `ok`). Board nằm ở đúng một đường dẫn: `.prime/orchestrator/board.json`.
 - `ponytail` và `ponytail-review` là bản **5.1.0**. Từ bản 5, `ponytail-review` không còn chỉ tìm mã thừa: nó review chất lượng đầy đủ (đúng, an toàn, chịu tải, có test, nhanh, gọn). Các skill phụ `ponytail-audit`, `ponytail-debt`, `ponytail-gain`, `ponytail-help` không nằm trong thư mục này. Cài từ nguồn gốc nếu cần.
 - `code-review` cần một issue tracker để lấy spec: nó đọc cấu hình tracker mà môi trường cung cấp. Nếu repo của bạn chưa có, bỏ bước đọc spec từ ticket. Trong quy trình này child code-review **không sinh child con**, nên vai code-review dùng `ponytail-review` chứ không chạy hai sub-agent của `code-review`. Trục Spec đã do `qc` chấm.
-- Skill `orchestrator` bản gốc bảo xoá child sau mỗi phase. Dự án gốc đổi luật này: **không xoá child** (xem `../01-quy-trinh.md`, mục "Quy tắc vận hành khác"). Chọn một cách và ghi vào quy tắc agent của bạn.
+- Skill `orchestrator` giữ child tới cuối run, không xoá sau mỗi phase (xem `../01-quy-trinh.md`, mục "Quy tắc vận hành khác"). Đội muốn dọn sớm thì đổi ở cả skill lẫn quy tắc agent.
+- Mọi `SKILL.md` có `name` khớp tên thư mục và `compatibility` (skill cần gì để chạy, tối đa 500 ký tự). Chỉ frontmatter được đồng đều, nội dung gốc giữ nguyên. `python3 scripts/check-skills.py` ép điều này và chạy trong gate.
 - `thinker` khuyến nghị model mạnh nhất và thinking cao. Phần dễ hỏng nhất là cây quyết định và việc gọi tên vấn đề thiết kế.
 - `advisor` chỉ chấm đầu mục engineer đưa. Điểm không đóng phase. Spawn `xai/grok-4.7` thinking `xhigh`; host từ chối `xhigh` thì `BLOCKED`, không hạ model.

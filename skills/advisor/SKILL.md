@@ -1,6 +1,7 @@
 ---
 name: advisor
 description: "Chấm dự thảo của engineer theo đúng đầu mục họ đưa, bằng comment có điểm, kèm ghi chú nâng cấp ngắn. Use when the user says advisor, chấm dự thảo, xin đánh giá engineer, gửi advisor, hoặc workflow engineer-advisor. Spawn model xai/grok-4.7 thinking xhigh. Không viết code, không sửa repo."
+compatibility: Needs an agent tool that can spawn a child with model xai/grok-4.7 and thinking xhigh; if the host rejects xhigh the spawn stops with BLOCKED, no downgrade. Scores only the items the engineer supplies and reads only what the engineer gives or lists as readable paths.
 ---
 
 # Advisor

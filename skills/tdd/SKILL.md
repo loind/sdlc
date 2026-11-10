@@ -1,6 +1,7 @@
 ---
 name: tdd
 description: Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests.
+compatibility: Needs the project's own test runner. Reads CONTEXT.md and docs/adr/ when present. No other dependencies.
 ---
 
 # Test-Driven Development

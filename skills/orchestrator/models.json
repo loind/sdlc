@@ -1,0 +1,7 @@
+{
+  "default": {"query": "sonnet", "id": "claude-sonnet-5-5"},
+  "roles": {
+    "engine": {"query": "deepseek", "provider": "deepseek", "id": "deepseek-v4-flash"},
+    "documenter": {"query": "gemini-3.8", "provider": "google-vertex", "id": "gemini-3.8-flash"}
+  }
+}

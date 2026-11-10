@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "goal": "Gateway giới hạn tốc độ (rate limit) theo khách hàng: vượt hạn mức thì trả 429, số đếm dùng chung giữa các pod qua kho dữ liệu chung.",
   "design_dir": "docs/design/rate-limit-theo-khach-hang",
   "gate": [
@@ -99,6 +100,13 @@
     "verifier": "<provider>/<model-verifier>",
     "documenter": "<provider>/<model-documenter>"
   },
+  "deadlines": {
+    "qc-p2-r1": "2026-10-07T10:45:00+07:00",
+    "qc2-p2-r1": "2026-10-07T10:45:00+07:00",
+    "code-review-p2-r1": "2026-10-07T10:45:00+07:00"
+  },
+  "heartbeat": "<id heartbeat 5 phút>",
+  "adr_seq": 0,
   "log": [
     {
       "ts": "2026-10-07T03:23:50+00:00",

@@ -1,6 +1,7 @@
 ---
 name: research
 description: Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent.
+compatibility: Needs an agent tool that can run a background agent, access to primary sources (official docs, source code, first-party APIs), and write access to save one Markdown findings file in the repo.
 ---
 
 Spin up a **background agent** to do the research, so you keep working while it reads.

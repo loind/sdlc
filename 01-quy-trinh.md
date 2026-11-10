@@ -231,7 +231,7 @@ Một sự cố thật: phiên thứ hai thấy phase ở trạng thái FAIL, m�
 
 ## Quy tắc vận hành khác
 
-- **Không xoá child** sau khi xong phase (luật của dự án gốc: người dùng muốn thấy mọi agent đã tham gia; vết nằm ở file verdict và ticket). Skill `orchestrator` bản gốc nói ngược; đội bạn tự chọn một trong hai, nhưng phải ghi vào quy tắc agent.
+- **Giữ child tới cuối run, không xoá sau khi xong phase.** Người dùng muốn thấy mọi agent đã tham gia; vết nằm ở file verdict và ticket. Skill `orchestrator` trong repo này đã theo luật đó (không gọi `rlm.delete_subagent`). Đội muốn dọn sớm thì đổi ở cả hai nơi và ghi vào quy tắc agent.
 - **Brief của việc build/deploy** phải nói rõ: chỉ được dọn cache build và xoá image Docker của dự án này. Cấm xoá file ngoài Docker (cache của home, dự án khác). Thiếu đĩa thì dừng và báo `BLOCKED`. Brief phải yêu cầu liệt kê chính xác mọi thứ đã xoá.
 - **Production chỉ được đọc** trong mọi brief nghiên cứu và kiểm: chỉ `GET`, không tạo, sửa, xoá.
 - **Không in bí mật** (mật khẩu, token, khoá) ra log, báo cáo hay file.

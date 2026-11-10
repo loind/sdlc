@@ -13,7 +13,7 @@ Acceptance:
 - <REQ-yyy: ...>
 
 Việc làm:
-1. Chạy gate đầy đủ trên ĐÚNG commit trên. Ghi ra file và kiểm exit code, không kết luận qua `| tail`.
+1. Chạy gate đầy đủ trên ĐÚNG commit trên qua `GATE_LOG=<file log> scripts/run-gate.sh "<lệnh 1>" "<lệnh 2>"`, mỗi lệnh một đối số, không `|`, `&&`, `;`. Đọc `EXIT=` và `GATE_GREEN`/`GATE_RED` trong log, không kết luận qua `| tail`.
 2. Tự kiểm độc lập bằng chương trình thật khi có thể (chạy binary, gửi request, đọc log). Đừng chỉ tin test của engine.
 3. Thử các nhánh lỗi, dữ liệu biên, và hồi quy so với hệ thống tham chiếu.
 4. Nếu thư mục build dùng chung với reviewer khác: KHÔNG xoá nó. Trước khi chạy trên checkout khác, `touch` file nguồn để cargo/bundler không dùng nhầm bản build cũ.
@@ -41,8 +41,8 @@ AN TOÀN
 - Chỉ được xoá: cache build và image Docker của dự án này. Không xoá thứ gì khác. Báo cáo cuối liệt kê mọi thứ đã xoá.
 
 BÁO CÁO
-- Gửi parent bằng `await agent_message.send(<tin>, receiver_role="parent")`.
-- Dòng đầu tiên là status token: DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT hoặc PROGRESS. Không dịch.
+- Chỉ nhắn parent: `await agent_message.send(<tin>, receiver_role="parent")`. Không nhắn sibling (reviewer không được thấy nhau). KHÔNG sinh child con (không gọi `rlm.spawn`).
+- Báo cáo cuối có dòng đầu là MỘT trong 4 token: DONE, DONE_WITH_CONCERNS, BLOCKED, NEEDS_CONTEXT. Không dịch. PROGRESS chỉ là tin giữa chừng, không thay báo cáo cuối.
 - BLOCKED chỉ dùng cho thứ bạn không tự gỡ được: host/cụm/registry không tới được, thiếu quyền, thiếu công cụ. Test đỏ, lỗi biên dịch, phát hiện review là CÔNG VIỆC, không phải BLOCKED.
 - Gửi một dòng PROGRESS trước mọi bước kéo dài quá vài phút.
 - DEADLINE (bắt buộc; múi giờ <TZ>, giờ hiện tại <HH:MM> lấy từ đồng hồ máy): PROGRESS lúc <HH:MM>, báo cáo cuối chậm nhất lúc <HH:MM>, dọn dẹp xong lúc <HH:MM>.
