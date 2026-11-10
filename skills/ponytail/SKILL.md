@@ -8,6 +8,7 @@ description: >
   over-engineering or bloat. Levels: lite, full (default), ultra.
 argument-hint: "[lite|full|ultra]"
 license: MIT
+compatibility: No extra dependencies. Any agent tool that loads SKILL.md. Stays active for the whole session until the user says 'stop ponytail' or 'normal mode'.
 ---
 
 # Ponytail

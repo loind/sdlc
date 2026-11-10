@@ -1,6 +1,7 @@
 ---
 name: orchestrator
 description: Execute a design package across agent sessions - engine builds each phase, qc and code-reviewer grade it in parallel, a real gate command closes it, then devops deploys, verifier runs system-wide e2e and security, and documenter updates the docs - all recorded on a persistent task board. Requires a design package from the thinker skill; it does not design the work itself. Use when the user asks to execute or orchestrate a plan across agents, run a build/review/gate loop per phase, coordinate subagents, or check the status of dispatched work.
+compatibility: Needs Prime Agent (rlm.spawn, agent_message, agent_observe, rlm_heartbeat), Python 3 for scripts/board.py, git, and a design package written by the thinker skill. Reads models.json for the role-to-model table.
 ---
 
 # Orchestrator

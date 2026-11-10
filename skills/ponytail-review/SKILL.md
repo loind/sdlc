@@ -6,6 +6,7 @@ description: >
   needed. Reads the connected code, not only the diff. Each finding is
   explained in plain English. Use for "review this", "code review", "review
   the last commit", "review my PR", "is this over-engineered", /ponytail-review.
+compatibility: Needs git to read the diff and read access to the surrounding code, tests and README. No other dependencies.
 ---
 
 Review a change like the senior developer who will be paged when it breaks.
