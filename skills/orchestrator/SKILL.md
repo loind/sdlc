@@ -141,6 +141,8 @@ Then act, per child, in this order:
  a. A runaway process of the child (match it to the child's worktree: lsof -p <pid> | grep cwd): kill the process, never the child. Tell the child what was killed and why, and remind it to bound its commands.
  b. Past its deadline, or silent for more than 10 minutes: send ONE message asking for its report now, with what it has.
  c. Still silent at the next heartbeat: bd.block(b, phase_id, reason), bd.save(b), and tell the user. Never delete the child.
+    The advisor child (name ends in -draft) is the exception: bd.advisor_unavailable(b, phase_id, reason), bd.save(b), tell the engine to go on. Never bd.block for the advisor.
+ d. An engine that sent a DRAFT and waits for the advisor is waiting on the parent, not silent: judge the advisor child instead.
 Do not stop this heartbeat while any phase is open or any child owes a report.
 Report to the user in Vietnamese with full diacritics, naming the child, the phase and the command or error. Keep status tokens, paths and commands in English.
 """
@@ -278,7 +280,7 @@ from pathlib import Path
 # find_models returns every match, newest NOT first: "sonnet" gives 4-5, 4-5-20250929, 4-6, 5, so
 # taking [0] silently picks 4.5. Match the exact id (and provider when pinned) and demand exactly one.
 # models.json (user decision 29/09/2026): engine = deepseek-v4-flash, documenter = gemini-3.8-flash,
-# every other role = claude-sonnet-5-5.
+# advisor = grok-4.7, every other role = claude-sonnet-5-5.
 TABLE = json.loads((Path(bd.__file__).parents[1] / "models.json").read_text(encoding="utf-8"))
 
 async def pick(role):
@@ -290,7 +292,7 @@ async def pick(role):
     return hits[0].selector
 
 b["models"] = {r: await pick(r) for r in
-               ("engine", "qc", "code-reviewer", "devops", "verifier", "documenter")}
+               ("engine", "advisor", "qc", "code-reviewer", "devops", "verifier", "documenter")}
 ```
 
 Never index into `find_models` by position, and never hardcode the selector string either -
@@ -298,7 +300,7 @@ pin the model **id** in `models.json` and let `find_models` resolve its provider
 index fails silently: the child runs an older model and nothing in the board says so. `rlm.spawn`
 does not fall back either: an unavailable exact selector fails the spawn.
 
-Children run the per-role model on the board (engine DeepSeek, documenter Gemini, the rest Sonnet). You keep the session's own model - the strong one - because the
+Children run the per-role model on the board (engine DeepSeek, documenter Gemini, advisor Grok, the rest Sonnet). You keep the session's own model - the strong one - because the
 decisions live here: reading two reviewers' findings against each other, deciding rework vs
 done, deciding what a verifier finding becomes. A child works one scoped task with a clean context, which is where a fast model holds
 up. Leave the board's `models` per-role so one role can be raised later without touching
@@ -306,7 +308,7 @@ this skill. `dispatch` (see Resolve or spawn) passes it as `model=b["models"][ro
 
 `model` takes an exact `provider/model` selector. `thinking` defaults to the parent level and an
 invalid level for that model fails the spawn, so `dispatch` leaves it out and every child
-inherits the parent's.
+inherits the parent's. The one exception is the advisor (`THINKING`): its skill demands `xhigh`.
 
 ## Resolve or spawn
 
@@ -318,6 +320,8 @@ def child_name(role, phase):
         return role                                        # one session each, once at the end
     if role in ("qc", "code-reviewer"):
         return f"{role}-p{phase['id']}-r{phase['round']}"   # fresh name every round: never reused
+    if role == "advisor":
+        return f"advisor-p{phase['id']}-draft"             # no round: advice on a draft, not a review round
     return f"engine-p{phase['id']}"                        # reused across rework rounds, new per phase
 ```
 
@@ -329,7 +333,9 @@ and returns. It never waits for the child.
 from datetime import timedelta
 import board as bd
 
-BUDGET_MIN = {"engine": 45, "qc": 20, "code-reviewer": 20, "devops": 20, "verifier": 30, "documenter": 20}
+BUDGET_MIN = {"engine": 45, "advisor": 20, "qc": 20, "code-reviewer": 20, "devops": 20, "verifier": 30,
+              "documenter": 20}
+THINKING = {"advisor": "xhigh"}   # the advisor skill demands it; every other child inherits the parent level
 
 async def dispatch(role, phase, brief, board):
     assert board.get("heartbeat"), "start the heartbeat first (see Heartbeat and deadlines)"
@@ -342,7 +348,8 @@ async def dispatch(role, phase, brief, board):
         await agent_message.send(f"{brief}\n\n{frame}", receiver_role="child", receiver_name=name)
     else:
         await rlm.spawn(f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{frame}\n\n{LANG}",
-                        name=name, model=board.get("models", {}).get(role))
+                        name=name, model=board.get("models", {}).get(role),
+                        thinking=THINKING.get(role))
     board.setdefault("agents", {})[role] = name
     bd.save(board)       # the board is the record, your context is not
     return name          # no child answer exists yet: it arrives later as a message
@@ -357,6 +364,26 @@ the child's result.
 **Keep every child until the run ends.** Do not call `rlm.delete_subagent` when a phase is `done`:
 the user wants to see every agent that took part, and the trace is in the verdict files and the
 ticket. Names are unique per phase and round, so idle children never collide.
+
+**The advisor is advice, not a board state.** The board stays `pending -> engine -> review -> done`. The
+advisor scores the engine's draft while the phase is `engine`, before any code is written. It has no round
+(its name ends in `-draft`, never `-r<n>`), it never moves `status` or `round`, and it does not count toward the
+3-round review limit. A failed advisor never blocks a phase:
+
+```python
+async def dispatch_advisor(phase, draft_path, brief, board):
+    if not bd.advisor_draft(board, phase["id"], draft_path):   # refuses a draft over 1500 words (AssertionError)
+        return None                                            # same draft already sent: nothing to do
+    try:
+        return await dispatch("advisor", phase, brief, board)
+    except Exception as e:                                     # host refuses xhigh, provider down
+        bd.advisor_unavailable(board, phase["id"], f"{type(e).__name__}: {e}")
+        bd.save(board)
+        return None                                            # tell the engine to go on without it
+```
+
+`bd.advisor_draft` is what keeps the advisor to one run per draft: a rework round after a qc or
+code-review FAIL hands the engine the same draft, so nothing is dispatched.
 
 ## Role briefs
 
@@ -417,8 +444,16 @@ await agent_message.send("BLOCKED: cluster unreachable ...", receiver_role="pare
 |---|---|---|
 | `DONE` | Finished, its own checks green | Advance the phase |
 | `DONE_WITH_CONCERNS` | Finished but flagging doubt | Advance, put the concerns in `notes`; fix only what affects correctness or scope |
-| `BLOCKED` | Cannot proceed at all | `bd.block(b, id, reason)`, do NOT advance, tell the user - something outside the child must change |
+| `BLOCKED` | Cannot proceed at all | `bd.block(b, id, reason)`, do NOT advance, tell the user - something outside the child must change. Not for the advisor: see below |
 | `NEEDS_CONTEXT` | Missing information you have | Send the missing piece to the same child; do not respawn it |
+
+**The advisor is the one exception.** Its `BLOCKED` (host refuses `xhigh`, provider down), a spawn that
+fails, or silence after the nudge is `bd.advisor_unavailable(b, id, reason)`: the reason goes in `notes` and
+the board log, the engine is told to go on, and the phase is never `bd.block`ed. The advisor advises; nothing
+waits on it.
+
+**A draft is not a report.** The engine's first message in a phase is `PROGRESS` with a `DRAFT: <path>` line.
+The phase stays `engine`; the draft goes to `dispatch_advisor`.
 
 Never ignore `BLOCKED` or `NEEDS_CONTEXT` by re-sending the same brief. Change something
 first - provide the context, fix the environment, or split the phase - or escalate to the user.
@@ -456,12 +491,20 @@ for name in active_children:
 
 An idle child that never reported is the same problem as a blocked one: park the phase with
 `bd.block(...)` naming what you observed, and tell the user. Do not assume idle means done -
-the board says done, nothing else does.
+the board says done, nothing else does. The one exception is the advisor: an idle advisor that never
+reported is `bd.advisor_unavailable(...)` and the engine goes on; the phase is never parked for it.
 
 ## Loop
 
 1. `next_phase(b)` -> no phase left? go to 8.
 2. Phase `pending` -> dispatch `engine`, `advance(b, id)`, save, end turn.
+   - The engine answers first with a draft: `PROGRESS` plus a `DRAFT: <path>` line. The phase stays `engine`.
+     `dispatch_advisor(...)`, save, end turn. No `advance`, no `round` change, no `bd.block`.
+   - The advisor's scores, or `advisor unavailable: <reason>`, go back to the same `engine` in ONE message
+     (`dispatch("engine", ...)` reuses it and sends the new deadline). Then the engine develops.
+   - The advisor runs again ONLY for a new draft (`bd.advisor_draft` returns True). A rework round after a
+     qc or code-review FAIL is not a new draft: findings go to the engine, nothing goes to the advisor, and
+     `round` counts reviewers only.
 3. Engine reports done -> `advance(b, id, note=<the engine's handoff note>)` (now `review`),
    dispatch `qc` **and** `code-reviewer` in the same turn, save, end turn.
 4. Wait for **both** replies before deciding. One arrived and the other has not is not a
@@ -475,9 +518,12 @@ the board says done, nothing else does.
      phase stays in `review`.
 5. Any child reporting `BLOCKED` -> `bd.block(b, id, reason)`, save, report to the user with
    the command and error. A phase stays parked until the blocker is gone, then `bd.unblock`.
+   Except the advisor: `bd.advisor_unavailable(b, id, reason)`, save, tell the engine to go on. Never
+   `bd.block` for the advisor.
 6. Every turn, and on every 5-minute heartbeat, check each dispatched child you have not heard
    from (see **Heartbeat and deadlines** and **Watching for silence**). Idle and silent, or past
-   its deadline and silent, is treated as blocked, not as done.
+   its deadline and silent, is treated as blocked, not as done (the advisor: unavailable, see 5). An engine that
+   sent a draft and waits for the advisor is waiting on you, not silent: judge the advisor child instead.
 7. A gate command that fails because the environment is unreachable is a blocker, not a
    rework: `bd.block(...)` instead of sending the engine back to fix something it did not break.
 8. Every phase `done` -> dispatch `devops`. It reports -> dispatch `verifier`. Sequential, not
