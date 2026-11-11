@@ -63,18 +63,20 @@ def compat_group(version):
 
 
 def downgrades(old, new):
+    """Mỗi bản cũ bị mất (có ở cũ, không còn ở mới) mà bản mới-thêm cao nhất thấp hơn nó là HẠ.
+
+    Bản mới-thêm được so trong cùng nhóm tương thích trước (syn 1.x với 1.x), nếu nhóm đó không có bản
+    mới-thêm thì so với mọi bản mới-thêm (hạ sang một nhóm chưa từng có). Không có bản mới-thêm nào thì
+    chỉ là bớt bản (XOÁ), không phải HẠ.
+    """
     found = []
     for name in sorted(old.keys() & new.keys()):
-        o_max, n_max = max(old[name], key=key), max(new[name], key=key)
-        if key(n_max) < key(o_max) and new[name] - old[name]:
-            found.append((name, o_max, n_max))
-            continue
-        # Package có nhiều nhóm major (syn 1.x và 2.x): bản cao nhất giữ nguyên vẫn có thể che việc hạ 1.x.
-        for g in sorted({compat_group(v) for v in old[name]} & {compat_group(v) for v in new[name]}):
-            o = max((v for v in old[name] if compat_group(v) == g), key=key)
-            n = max((v for v in new[name] if compat_group(v) == g), key=key)
-            if key(n) < key(o):
-                found.append((name, o, n))
+        added = new[name] - old[name]
+        for lost in sorted(old[name] - new[name], key=key):
+            same = [v for v in added if compat_group(v) == compat_group(lost)]
+            candidates = same or list(added)
+            if candidates and key(max(candidates, key=key)) < key(lost):
+                found.append((name, lost, max(candidates, key=key)))
     return found
 
 
@@ -172,6 +174,10 @@ def self_test():
         run(1, "bản cao nhất biến mất, bản thấp hơn xuất hiện: hạ", lock(syn="1.0.200"), contains="syn 2.0.20 -> 1.0.200")
         run(1, "hạ trong nhóm 1.x khi 2.x giữ nguyên", lock(syn="1.0.50 2.0.20"), contains="syn 1.0.109 -> 1.0.50")
         run(0, "nâng trong nhóm 1.x khi 2.x giữ nguyên", lock(syn="1.0.200 2.0.20"))
+        run(1, "hạ 1.x sang nhóm chưa từng có (0.9) khi 2.x giữ nguyên", lock(syn="0.9.0 2.0.20"),
+            contains="syn 1.0.109 -> 0.9.0")
+        run(1, "hạ 1.x trong khi 2.x được nâng", lock(syn="1.0.50 2.0.30"), contains="syn 1.0.109 -> 1.0.50")
+        run(0, "chỉ bớt một bản cùng nhóm, không thêm bản nào: không phải hạ", lock(syn="2.0.20"))
         run(0, "xoá hẳn package không phải hạ", lock(gone=None), contains="XOÁ (không phải hạ): gone")
         run(0, "chỉ bớt bản cao nhất, bản thấp còn nguyên: không phải hạ", lock(syn="1.0.109"))
 

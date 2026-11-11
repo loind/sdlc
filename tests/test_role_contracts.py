@@ -60,7 +60,8 @@ if "either PASS" in skill_prompt("code-reviewer"):
 need("SKILL.md Loop", SKILL, "bd.parse_verdict", "`ValueError`",
      "qc PASS **and** code-reviewer APPROVE -> run the gate (shared + `phase_gate`),",
      "qc FAIL **or** code-reviewer REQUEST_CHANGES -> `advance(b, id, rework=True, note=...)`",
-     "-> first\n   `bd.clear_deadline(b, <that child's name>)`")
+     "A final report you accept** -> first `bd.clear_deadline(b, <that child's name>)`",
+     "answer it with `dispatch(...)`", "`dispatch` the same child the exact format")
 if "Both `PASS`" in SKILL:
     errors.append("SKILL.md Loop: còn 'Both `PASS`'")
 need("SKILL.md bảng vai", SKILL, "`VERDICT: APPROVE` or `VERDICT: REQUEST_CHANGES`", "`VERDICT: PASS` or `VERDICT: FAIL`")
