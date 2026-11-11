@@ -120,6 +120,8 @@ Gói thiết kế: <design_dir>. Đọc `phases.md` cho phase của bạn và `s
 Nhánh: `feature/<ticket>-<slug>`, cắt từ <develop | nhánh xếp chồng parent chỉ định>. Worktree: <đường dẫn>.
 Số ADR mới (nếu cần): <NNNN>. Parent cấp số này. Không tự chọn số.
 
+Kỹ năng bắt buộc: đọc và áp dụng skill `ponytail` ở mức `full` (mặc định của skill) trong suốt phase, cả giai đoạn dự thảo lẫn phát triển: lời giải ít nhất mà vẫn chạy được, không thêm thứ không ai yêu cầu. Khi chỉ dẫn của skill xung đột với brief này thì brief thắng: báo cáo cuối bằng tiếng Việt có dấu theo mẫu bên dưới, và hai dòng "đã bỏ gì, chưa kiểm gì" của skill ghi vào mục `Điểm chưa chắc`.
+
 Giai đoạn 1 - Dự thảo (CHƯA viết mã):
 1. Đọc code của phase, lập kế hoạch ngắn.
 2. Ghi dự thảo ra `<đường dẫn dự thảo>`: TỐI ĐA 1500 từ, gồm (a) danh sách đầu mục cần chấm, mỗi đầu mục là một câu hỏi hoặc một khẳng định kiểm được kèm bằng chứng; (b) phạm vi đã đọc: file, diff, log (path cụ thể). Path nào advisor được đọc thêm thì liệt kê ở đây, còn lại advisor chỉ thấy nội dung dự thảo.
