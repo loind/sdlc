@@ -13,13 +13,14 @@ Your job is to run it, gate it on real commands, and record every transition on 
 
 You do not write product code yourself.
 
-Per phase: `engine -> (qc || code-reviewer) -> gate -> done`. After the last phase:
+Per phase: `engine -> (qc || qc2 || code-reviewer) -> gate -> done`. After the last phase:
 `devops -> verifier -> documenter`. The next phase starts from the board, not from memory.
 
 | Role | Owns | Runs | Ends its turn by |
 |---|---|---|---|
 | `engine` | One phase: draft first, then failing test, implement, run the suite | Per phase | A draft (`PROGRESS` + `DRAFT:` line), then phase id + diff summary + handoff note |
 | `qc` | Grades the diff against that phase's **acceptance criteria**, one verdict per requirement | Per phase, parallel with code-reviewer | `VERDICT: PASS` or `VERDICT: FAIL`, then one line per requirement |
+| `qc2` | The qc brief, same model as qc, own clean session: hunts error branches, edge data, regressions | Per phase, parallel with qc and code-reviewer | `VERDICT: PASS` or `VERDICT: FAIL`, then one line per requirement |
 | `code-reviewer` | Correctness + over-engineering review of the diff, via `ponytail-review` | Per phase, parallel with qc | `VERDICT: APPROVE` or `VERDICT: REQUEST_CHANGES`, then numbered findings |
 | `devops` | Deploy and infrastructure: image, manifest, rollout. No security judgement | Once, after the last phase | Message to parent with what was deployed and where |
 | `verifier` | System-wide e2e + the whole security picture on the deployed build; decides ship / no-ship | Once, after devops | `PASS` or blocking findings |
@@ -284,7 +285,8 @@ from pathlib import Path
 # find_models returns every match, newest NOT first: "sonnet" gives 4-5, 4-5-20250929, 4-6, 5, so
 # taking [0] silently picks 4.5. Match the exact id (and provider when pinned) and demand exactly one.
 # models.json (user decision 29/09/2026): engine = deepseek-v4-flash, documenter = gemini-3.8-flash,
-# advisor = grok-4.7, every other role = claude-sonnet-5-5.
+# advisor = grok-4.7, every other role = claude-sonnet-5-5. qc2 has no entry on purpose: same model as qc
+# (user decision 11/11/2026).
 TABLE = json.loads((Path(bd.__file__).parents[1] / "models.json").read_text(encoding="utf-8"))
 
 async def pick(role):
@@ -296,7 +298,7 @@ async def pick(role):
     return hits[0].selector
 
 b["models"] = {r: await pick(r) for r in
-               ("engine", "advisor", "qc", "code-reviewer", "devops", "verifier", "documenter")}
+               ("engine", "advisor", "qc", "qc2", "code-reviewer", "devops", "verifier", "documenter")}
 ```
 
 Never index into `find_models` by position, and never hardcode the selector string either -
@@ -322,7 +324,7 @@ The child's *name* decides what gets reused, so the naming rule carries the cont
 def child_name(role, phase):
     if role in ("devops", "verifier", "documenter"):
         return role                                        # one session each, once at the end
-    if role in ("qc", "code-reviewer"):
+    if role in ("qc", "qc2", "code-reviewer"):
         return f"{role}-p{phase['id']}-r{phase.get('round', 1)}"   # fresh name every round: never reused
     if role == "advisor":
         return f"advisor-p{phase['id']}-draft"             # no round: advice on a draft, not a review round
@@ -339,7 +341,7 @@ and returns. It never waits for the child.
 from datetime import timedelta
 import board as bd
 
-BUDGET_MIN = {"engine": 45, "advisor": 20, "qc": 20, "code-reviewer": 20, "devops": 20, "verifier": 30,
+BUDGET_MIN = {"engine": 45, "advisor": 20, "qc": 20, "qc2": 20, "code-reviewer": 20, "devops": 20, "verifier": 30,
               "documenter": 20}
 THINKING = {"advisor": "xhigh"}   # the advisor skill demands it; every other child inherits the parent level
 
@@ -439,6 +441,7 @@ Dịch một status token là làm hỏng `advance()`: parent đọc chữ đầ
 
 - **engine**: `"Phase <id>: <title>. The design package is at <design_dir> - read phases.md for your phase and srs.md for requirements <req_ids>. Work in two stages. Stage 1, draft (write no code yet): read the code of the phase, then write a plan of at most 1500 words to the draft path in your brief, with a list of checkable items to be scored and the scope you read (files, diffs, logs; list any path the advisor may also read). Then message the parent: first line PROGRESS, second line DRAFT: <draft path>, and STOP and wait. The parent answers with the advisor's scores or advisor unavailable: <reason> (then go on, do not wait for the advisor). Record the direction you chose, including where you did not follow the advisor and why, in your final report. Stage 2, develop: write the failing test first, implement until it passes, run the full suite. After a qc or code-review FAIL, fix straight from the findings: write no new draft and do not call the advisor unless the direction changes (then send a new DRAFT: line and wait). Follow the repo's own conventions. When the suite is green, message the parent with: phase <id>, the files touched, a 3-line diff summary, and a handoff note - decisions you made, gotchas you hit, what an engine starting fresh on the next phase would need to know. Start that message with DONE or DONE_WITH_CONCERNS. If you cannot reach a host, cluster, registry or database, or you lack a credential or tool, STOP and message the parent starting with BLOCKED plus the exact command and error - do not retry a broken environment. If the task itself is unclear, message NEEDS_CONTEXT. Send one PROGRESS line before any step taking more than a few minutes. Load the `ponytail` skill and apply its default level `full` for the whole phase; this brief's report format and language win over the skill's. Do not start another phase."`
 - **qc**: `"Grade the diff for phase <id> against its acceptance criteria - nothing else. Criteria: <acceptance>. Requirements: <req_ids> in <design_dir>/srs.md, each with a verification method (Test / Demonstration / Inspection / Analysis) - use that method, do not substitute a cheaper one. Reply to the parent starting with DONE, then the line VERDICT: PASS or VERDICT: FAIL (exactly that, upper case, alone on its line), then one line per requirement: REQ-xxx PASS, or REQ-xxx FAIL plus exactly what is missing or wrong. A requirement whose verification method you could not carry out is FAIL, not PASS. You are not reviewing code style or structure - another reviewer has that. Do not edit code. If you cannot read the diff or run what you need, reply BLOCKED with the command and error."`
+- **qc2**: `"Run the qc brief for phase <id> - same criteria, same requirements, same verification methods - independently and in parallel with qc: you never see qc's reply, do not ask for it. You run on the same model as qc; your value is a clean session and a different hunt. Look first for what qc tends to miss: error branches, edge data, regressions against the reference system, leaked secrets. Run the program for any finding about behaviour - reading code is not enough to PASS. Keep a finding's severity (BLOCKER, MAJOR, MINOR, NIT) by its real consequence. Reply to the parent starting with DONE, then the line VERDICT: PASS or VERDICT: FAIL (exactly that, upper case, alone on its line), then one line per requirement: REQ-xxx PASS, or REQ-xxx FAIL plus exactly what is missing or wrong, then findings with severity and file:line. Do not edit code. If you cannot read the diff or run what you need, reply BLOCKED with the command and error."`
 - **code-reviewer**: `"Review the diff for phase <id> (<files>) for correctness and over-engineering. Use the ponytail-review skill. Reply to the parent starting with DONE, then the line VERDICT: APPROVE or VERDICT: REQUEST_CHANGES (exactly that, upper case, alone on its line; this format wins over ponytail-review's own Verdict: Ship.), then a numbered list of findings, each as file:line + what to cut or fix. Do not grade the feature against requirements - another reviewer has that. If you cannot read the diff or reach what you need, reply BLOCKED with the command and error instead. Do not edit code."`
 - **devops**: `"Every phase is done. Deploy the final build: build and push the image, pin it by digest, apply the manifests, wait for the rollout to finish. Report to the parent starting with DONE, DONE_WITH_CONCERNS or BLOCKED, naming the environment, the exact image digest deployed and anything that failed. Do not run security scans and do not judge whether it is safe to ship - a separate verifier does that. Do not edit application code."`
 - **verifier**: `"The build is deployed - <environment>, image <digest>. Run the system-wide checks: the repo's end-to-end suite and its security scan, plus the non-functional requirements in <design_dir>/srs.md whose verification method is Demonstration or Analysis. Then decide: is this safe to ship? Reply to the parent starting with DONE and PASS, or with blocking findings, each as what fails + the evidence + which requirement or risk it touches. Judge the whole system, not one phase's diff. If an environment, tunnel, cluster or credential is unavailable, reply BLOCKED with the command and error - a missing environment is never a finding, and never a reason to fail the build."`
@@ -526,16 +529,17 @@ reported is `bd.advisor_unavailable(...)` and the engine goes on; the phase is n
      qc or code-review FAIL is not a new draft: findings go to the engine, nothing goes to the advisor, and
      `round` counts reviewers only.
 3. Engine reports done -> `advance(b, id, note=<the engine's handoff note>)` (now `review`),
-   dispatch `qc` **and** `code-reviewer` in the same turn, save, end turn.
-4. Wait for **both** replies before deciding. One arrived and the other has not is not a
-   verdict - end the turn and wait. Read each reply with `bd.parse_verdict(role, text)` (qc:
+   dispatch `qc`, `qc2` **and** `code-reviewer` in the same turn, save, end turn. qc2 runs the qc brief on
+   the same model as qc, in its own clean session.
+4. Wait for **all three** replies before deciding. Some arrived and one has not is not a
+   verdict - end the turn and wait. Read each reply with `bd.parse_verdict(role, text)` (qc and qc2:
    `VERDICT: PASS|FAIL`, code-reviewer: `VERDICT: APPROVE|REQUEST_CHANGES`). A reply that raises
    `ValueError` is not a verdict and never a pass: `dispatch` the same child the exact format (fresh
    deadline) and wait. Then:
-   - qc PASS **and** code-reviewer APPROVE -> run the gate (shared + `phase_gate`),
+   - qc PASS **and** qc2 PASS **and** code-reviewer APPROVE -> run the gate (shared + `phase_gate`),
      `advance(b, id, gate=results)` (now `done`), save, go to 1.
-   - qc FAIL **or** code-reviewer REQUEST_CHANGES -> `advance(b, id, rework=True, note=...)`, send
-     **both** replies to `engine` in one message, save, end turn. Do not send the engine back twice for
+   - qc FAIL **or** qc2 FAIL **or** code-reviewer REQUEST_CHANGES -> `advance(b, id, rework=True, note=...)`,
+     send **all three** replies to `engine` in one message, save, end turn. Do not send the engine back twice for
      the same round.
    - Gate red -> send the failing command plus its output to `engine`, save, end turn; the
      phase stays in `review`.
