@@ -319,10 +319,12 @@ def child_name(role, phase):
     if role in ("devops", "verifier", "documenter"):
         return role                                        # one session each, once at the end
     if role in ("qc", "code-reviewer"):
-        return f"{role}-p{phase['id']}-r{phase['round']}"   # fresh name every round: never reused
+        return f"{role}-p{phase['id']}-r{phase.get('round', 1)}"   # fresh name every round: never reused
     if role == "advisor":
         return f"advisor-p{phase['id']}-draft"             # no round: advice on a draft, not a review round
-    return f"engine-p{phase['id']}"                        # reused across rework rounds, new per phase
+    if role == "engine":
+        return f"engine-p{phase['id']}"                    # reused across rework rounds, new per phase
+    raise ValueError(f"unknown role {role!r}: add it to child_name, BUDGET_MIN and models.json first")
 ```
 
 Then resolve-or-spawn is a plain lookup - a name that exists is reused, a name that does not
@@ -344,12 +346,16 @@ async def dispatch(role, phase, brief, board):
     mid, tail = due - timedelta(minutes=BUDGET_MIN[role] / 2), due + timedelta(minutes=5)
     frame = FRAME.format(tz=due.tzname(), progress=f"{mid:%H:%M}",     # FRAME, LANG: see Role briefs
                          final=f"{due:%H:%M}", cleanup=f"{tail:%H:%M}")
-    if any(c.session_name == name for c in await rlm.list_subagents()):
-        await agent_message.send(f"{brief}\n\n{frame}", receiver_role="child", receiver_name=name)
-    else:
-        await rlm.spawn(f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{frame}\n\n{LANG}",
-                        name=name, model=board.get("models", {}).get(role),
-                        thinking=THINKING.get(role))
+    try:
+        if any(c.session_name == name for c in await rlm.list_subagents()):
+            await agent_message.send(f"{brief}\n\n{frame}", receiver_role="child", receiver_name=name)
+        else:
+            await rlm.spawn(f"{ROLE_PROMPT[role]}\n\n{brief}\n\n{frame}\n\n{LANG}",
+                            name=name, model=board.get("models", {}).get(role),
+                            thinking=THINKING.get(role))
+    except Exception:
+        bd.clear_deadline(board, name)   # a child that never got the brief owes no report
+        raise
     board.setdefault("agents", {})[role] = name
     bd.save(board)       # the board is the record, your context is not
     return name          # no child answer exists yet: it arrives later as a message
@@ -496,6 +502,10 @@ reported is `bd.advisor_unavailable(...)` and the engine goes on; the phase is n
 
 ## Loop
 
+0. **Every final report** (first line `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_CONTEXT`) -> first
+   `bd.clear_deadline(b, <that child's name>)`, then the steps below. The heartbeat watches only children that still
+   owe a report; without this it never stops and a finished advisor is later marked unavailable. A `PROGRESS` line
+   (including a draft) is not a final report: the child's deadline stays.
 1. `next_phase(b)` -> no phase left? go to 8.
 2. Phase `pending` -> dispatch `engine`, `advance(b, id)`, save, end turn.
    - The engine answers first with a draft: `PROGRESS` plus a `DRAFT: <path>` line. The phase stays `engine`.

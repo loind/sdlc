@@ -34,8 +34,9 @@ SOURCES = {
 bad = []
 for name, get in SOURCES.items():
     text = get()
-    if "`ponytail`" not in text or "`full`" not in text:
-        bad.append(f"{name}: thiếu yêu cầu skill `ponytail` mức `full`")
+    if ("đọc và áp dụng skill `ponytail` ở mức `full`" not in text
+            and "Load the `ponytail` skill and apply its default level `full`" not in text):
+        bad.append(f"{name}: thiếu câu yêu cầu đọc và áp dụng skill `ponytail` mức `full`")
     if "thắng" not in text and "win over" not in text:
         bad.append(f"{name}: thiếu quy tắc brief thắng skill về định dạng báo cáo và ngôn ngữ")
 if bad:

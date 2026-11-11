@@ -84,7 +84,7 @@ GATE_LOG=gate.log scripts/run-gate.sh "cargo fmt --all --check" "cargo test --lo
 |---|---|---|
 | Xanh | dòng cuối `GATE_GREEN all <n>` | 0 |
 | Đỏ | `GATE_RED at [n]`, dừng ở lệnh đỏ đầu tiên | exit của lệnh đỏ |
-| Từ chối | `REJECT` vì lệnh chứa `\|`, `&`, `;` | 2 |
+| Từ chối | `REJECT` vì lệnh chứa `\|`, `&`, `;` hoặc xuống dòng; không có lệnh nào; lệnh rỗng; `TIMEOUT_SEC` không phải số giây dương | 2 |
 
 - Cấm `|`, `&&`, `;` và cả `&` (kể cả `2>&1`). Pipe che exit code của lệnh đỏ. Script đã gộp stderr vào log, nên không cần `2>&1`.
 - Cần logic nhiều bước (đọc tag build, sửa manifest, chờ rollout): đưa vào một script của repo và để gate gọi script đó.

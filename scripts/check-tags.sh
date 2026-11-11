@@ -21,6 +21,7 @@ run_check() {
   names="$( { printf '%s\n' "$listed" | awk '{sub("refs/tags/", "", $2); sub(/\^\{\}$/, "", $2); print $2}'
               git for-each-ref --format='%(refname:strip=2)' refs/tags; } | sort -u )" || return 2
 
+  # shortcut: vài lần fork mỗi tag (khoảng 25 ms/tag trên macOS, 2000 tag mất cỡ 50 giây); repo có nhiều nghìn tag thì gộp vào một lệnh awk
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     case "$name" in

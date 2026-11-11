@@ -54,12 +54,27 @@ def packages(text):
     return out
 
 
+def compat_group(version):
+    """Nhóm tương thích kiểu semver: 1.x.y -> (1,), 0.3.x -> (0, 3), 0.0.4 -> (0, 0, 4)."""
+    key(version)  # kiểm định dạng trước
+    core = [int(x) for x in VERSION.match(version).group(1).split(".")]
+    i = next((n for n, x in enumerate(core) if x), len(core) - 1)
+    return tuple(core[: i + 1])
+
+
 def downgrades(old, new):
     found = []
     for name in sorted(old.keys() & new.keys()):
         o_max, n_max = max(old[name], key=key), max(new[name], key=key)
         if key(n_max) < key(o_max) and new[name] - old[name]:
             found.append((name, o_max, n_max))
+            continue
+        # Package có nhiều nhóm major (syn 1.x và 2.x): bản cao nhất giữ nguyên vẫn có thể che việc hạ 1.x.
+        for g in sorted({compat_group(v) for v in old[name]} & {compat_group(v) for v in new[name]}):
+            o = max((v for v in old[name] if compat_group(v) == g), key=key)
+            n = max((v for v in new[name] if compat_group(v) == g), key=key)
+            if key(n) < key(o):
+                found.append((name, o, n))
     return found
 
 
@@ -84,10 +99,15 @@ def check(ref, files):
     if git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode != 0:
         raise Fail(f"base-ref không tồn tại: {ref!r}")
     allow, bad = allowed(), 0
+    root = Path(git("rev-parse", "--show-toplevel").stdout.strip() or ".").resolve()
     for f in files:
         if not Path(f).is_file():
             raise Fail(f"{f}: không có trong cây làm việc (gõ sai đường dẫn?)")
-        shown = git("show", f"{ref}:{f}")
+        try:  # git show ref:path tính từ gốc repo, không từ cwd
+            rel = Path(f).resolve().relative_to(root).as_posix()
+        except ValueError:
+            raise Fail(f"{f}: nằm ngoài repo {root}")
+        shown = git("show", f"{ref}:{rel}")
         if shown.returncode != 0:
             print(f"check-downgrade: {f}: không có ở {ref}, không có gì để so")
             continue
@@ -135,10 +155,10 @@ def self_test():
         git_("add", "-A")
         git_("commit", "-q", "-m", "base")
 
-        def run(want, what, new_lock=None, ref="HEAD", files=("Cargo.lock",), contains=""):
+        def run(want, what, new_lock=None, ref="HEAD", files=("Cargo.lock",), contains="", cwd=None):
             if new_lock is not None:
                 (d / "Cargo.lock").write_text(new_lock, encoding="utf-8")
-            r = subprocess.run([sys.executable, str(tool), ref, *files], cwd=d, capture_output=True, text=True)
+            r = subprocess.run([sys.executable, str(tool), ref, *files], cwd=cwd or d, capture_output=True, text=True)
             out = r.stdout + r.stderr
             if r.returncode != want or contains not in out:
                 raise AssertionError(f"{what}: cần exit {want} chứa {contains!r}, nhận exit {r.returncode}: {out}")
@@ -150,6 +170,8 @@ def self_test():
         run(1, "hạ tokio phải đỏ", lock(tokio="1.19.0"), contains="tokio 1.20.0 -> 1.19.0")
         run(1, "bản chính thức -> tiền phát hành là hạ", lock(tokio="1.20.0-rc.1"), contains="tokio 1.20.0 -> 1.20.0-rc.1")
         run(1, "bản cao nhất biến mất, bản thấp hơn xuất hiện: hạ", lock(syn="1.0.200"), contains="syn 2.0.20 -> 1.0.200")
+        run(1, "hạ trong nhóm 1.x khi 2.x giữ nguyên", lock(syn="1.0.50 2.0.20"), contains="syn 1.0.109 -> 1.0.50")
+        run(0, "nâng trong nhóm 1.x khi 2.x giữ nguyên", lock(syn="1.0.200 2.0.20"))
         run(0, "xoá hẳn package không phải hạ", lock(gone=None), contains="XOÁ (không phải hạ): gone")
         run(0, "chỉ bớt bản cao nhất, bản thấp còn nguyên: không phải hạ", lock(syn="1.0.109"))
 
@@ -165,6 +187,14 @@ def self_test():
         run(2, "base-ref sai phải exit 2, không pass ngầm", lock(), ref="khong-co-ref", contains="base-ref không tồn tại")
         run(2, "file không có khối [[package]] phải exit 2", '{"lockfileVersion": 3}\n', contains="không đọc được khối")
         run(2, "đường dẫn file gõ sai phải exit 2, không pass ngầm", files=("Cargo.lcok",), contains="không có trong cây làm việc")
+        (d / "svc").mkdir()
+        (d / "svc" / "api.lock").write_text(lock(), encoding="utf-8")
+        git_("add", "-A")
+        git_("commit", "-q", "-m", "svc")
+        (d / "Cargo.lock").write_text(lock(), encoding="utf-8")
+        (d / "svc" / "api.lock").write_text(lock(tokio="1.0.0"), encoding="utf-8")
+        run(1, "chạy từ thư mục con vẫn so đúng file", files=("api.lock",), contains="tokio 1.20.0 -> 1.0.0", cwd=d / "svc")
+        run(1, "đường dẫn tuyệt đối vẫn so đúng file", files=(str(d / "svc" / "api.lock"),), contains="tokio 1.20.0 -> 1.0.0")
         (d / "Moi.lock").write_text(lock(), encoding="utf-8")
         run(0, "file khoá mới (không có ở base) không có gì để so", files=("Moi.lock",), contains="không có ở HEAD")
     print("check-downgrade --self-test: OK")

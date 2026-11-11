@@ -163,6 +163,30 @@ def test_advisor_snippet():
     assert calls["spawn"][-1]["thinking"] is None, "only the advisor forces a thinking level"
 
 
+def test_dispatch_failures():
+    code = "\n".join(block(n) for n in ("def child_name", "FRAME = ", "async def dispatch(role"))
+    ns = {"rlm": FakeRlm(), "agent_message": FakeMessage(), "ROLE_PROMPT": {"engine": "ROLE-ENGINE"}}
+    exec(code, ns)
+    for role in ("qc2", "research", "enginee"):
+        try:
+            ns["child_name"](role, {"id": 1, "round": 1})
+            raise AssertionError(f"unknown role {role!r} must not fall back to the engine's name")
+        except ValueError:
+            pass
+    assert ns["child_name"]("qc", {"id": 1}) == "qc-p1-r1", "a phase without round is round 1"
+
+    b = bd.load(Path("/nonexistent/board.json"))
+    bd.set_heartbeat(b, "hb-1")
+    calls["existing"], calls["spawn_error"] = [], "provider down"
+    try:
+        asyncio.run(ns["dispatch"]("engine", {"id": 9, "round": 1}, "BRIEF", b))
+        raise AssertionError("a failed spawn must raise")
+    except RuntimeError:
+        pass
+    calls["spawn_error"] = None
+    assert "engine-p9" not in b["deadlines"], "a child that never got the brief must not owe a report"
+
+
 if __name__ == "__main__":
     start = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
@@ -171,6 +195,7 @@ if __name__ == "__main__":
             test_heartbeat_snippet()
             test_dispatch_snippet()
             test_advisor_snippet()
+            test_dispatch_failures()
         finally:
             os.chdir(start)
     print("skill snippets ok")
