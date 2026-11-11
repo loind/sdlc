@@ -169,8 +169,7 @@ def test_dispatch_failures():
     code = "\n".join(block(n) for n in ("def child_name", "FRAME = ", "async def dispatch(role"))
     ns = {"rlm": FakeRlm(), "agent_message": FakeMessage(), "ROLE_PROMPT": {"engine": "ROLE-ENGINE"}}
     exec(code, ns)
-    assert ns["child_name"]("qc2", {"id": 1, "round": 2}) == "qc2-p1-r2", "qc2 gets a fresh name every round"
-    for role in ("research", "enginee"):
+    for role in ("qc2", "research", "enginee"):
         try:
             ns["child_name"](role, {"id": 1, "round": 1})
             raise AssertionError(f"unknown role {role!r} must not fall back to the engine's name")

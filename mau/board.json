@@ -12,7 +12,7 @@
       "id": 1,
       "title": "Bộ đếm cửa sổ trượt (module độc lập)",
       "status": "done",
-      "notes": "round 2: qc PASS, qc2 PASS, code-review APPROVE; gate 4/4 xanh. Ghi nhận: MINOR (tên hàm) -> ticket phụ, không chặn.",
+      "notes": "round 2: qc PASS, code-review APPROVE; gate 4/4 xanh. Ghi nhận: MINOR (tên hàm) -> ticket phụ, không chặn.",
       "round": 2,
       "req_ids": [
         "REQ-001",
@@ -88,13 +88,11 @@
   "agents": {
     "engine": "engine-p2",
     "qc": "qc-p2-r1",
-    "qc2": "qc2-p2-r1",
     "code-reviewer": "code-review-p2-r1"
   },
   "models": {
     "engine": "<provider>/<model-engine>",
     "qc": "<provider>/<model-qc>",
-    "qc2": "<provider>/<model-qc2>",
     "code-reviewer": "<provider>/<model-review>",
     "devops": "<provider>/<model-devops>",
     "verifier": "<provider>/<model-verifier>",
@@ -102,7 +100,6 @@
   },
   "deadlines": {
     "qc-p2-r1": "2026-10-07T10:45:00+07:00",
-    "qc2-p2-r1": "2026-10-07T10:45:00+07:00",
     "code-review-p2-r1": "2026-10-07T10:45:00+07:00"
   },
   "heartbeat": "<id heartbeat 5 phút>",
@@ -138,7 +135,7 @@
     },
     {
       "ts": "2026-10-07T03:23:50+00:00",
-      "event": "phase 1: review -> done (round 2: qc PASS, qc2 PASS, code-review APPROVE; gate 4/4 xanh. Ghi nhận: MINOR (tên hàm) -> ticket phụ, không chặn.)"
+      "event": "phase 1: review -> done (round 2: qc PASS, code-review APPROVE; gate 4/4 xanh. Ghi nhận: MINOR (tên hàm) -> ticket phụ, không chặn.)"
     },
     {
       "ts": "2026-10-07T03:23:50+00:00",
