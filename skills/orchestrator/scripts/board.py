@@ -174,6 +174,25 @@ def advisor_unavailable(board, phase_id, reason):
     log(board, f"phase {phase_id}: {note}")
 
 
+VERDICTS = {"qc": {"PASS": True, "FAIL": False}, "qc2": {"PASS": True, "FAIL": False},
+            "code-reviewer": {"APPROVE": True, "REQUEST_CHANGES": False}}
+
+
+def parse_verdict(role, text):
+    """Read a reviewer's reply by machine: True = passes the phase, False = asks for changes.
+
+    The reply must carry exactly one line `VERDICT: <TOKEN>` (upper case, nothing after the token), and the token
+    must belong to the role: qc/qc2 PASS|FAIL, code-reviewer APPROVE|REQUEST_CHANGES. Anything else raises
+    ValueError - that reply is NOT a pass: send the same child the format and wait. ponytail-review's own
+    `Verdict: Ship.` is deliberately not accepted.
+    """
+    allowed = VERDICTS[role]
+    found = {m.group(1) for m in re.finditer(r"^VERDICT: (\S+)[ \t]*$", text, re.M)}
+    if len(found) != 1 or next(iter(found)) not in allowed:
+        raise ValueError(f"{role}: need exactly one `VERDICT: {'|'.join(allowed)}` line, got {sorted(found) or 'none'}")
+    return allowed[found.pop()]
+
+
 def set_deadline(board, child, minutes, now=None):
     """Final-report deadline for a child: absolute, from the machine clock, never a guess.
 
@@ -332,6 +351,37 @@ def _demo_advisor():
     assert ph["notes"].count("advisor unavailable") == 2, "notes accumulate, never overwrite"
 
 
+def _demo_verdict():
+    assert parse_verdict("qc", "DONE\nVERDICT: PASS\nREQ-001 PASS") is True
+    assert parse_verdict("qc", "DONE\nVERDICT: FAIL\nREQ-001 FAIL thiếu index") is False
+    assert parse_verdict("code-reviewer", "DONE\nMở đầu.\nVERDICT: APPROVE\n") is True
+    assert parse_verdict("code-reviewer", "DONE\nVERDICT: REQUEST_CHANGES  \n1. Lỗi") is False
+    assert parse_verdict("qc", "VERDICT: PASS\nVERDICT: PASS") is True, "the same line twice is one verdict"
+    for role, text, why in (
+        ("code-reviewer", "DONE\nVERDICT: PASS", "PASS is not a code-reviewer token"),
+        ("qc", "DONE\nVERDICT: APPROVE", "APPROVE is not a qc token"),
+        ("code-reviewer", "DONE\nVerdict: Ship.", "ponytail-review's native verdict is not accepted"),
+        ("qc", "DONE\nREQ-001 PASS", "per-REQ lines are not a verdict"),
+        ("qc", "DONE\nVERDICT: PASS\nVERDICT: FAIL", "two different verdicts"),
+        ("qc", "DONE\nVERDICT: PASS.", "trailing text after the token"),
+        ("qc", "DONE\n- `VERDICT: PASS` hoặc `VERDICT: FAIL`", "an echoed instruction is not a verdict"),
+        ("qc", "", "empty reply"),
+        ("qc", "DONE\nReviewer nói VERDICT: PASS", "a mention in the middle of a line is not a verdict"),
+        ("qc", "DONE\nVERDICT: PASS kèm ghi chú", "words after the token"),
+        ("qc", "DONE\nverdict: PASS", "lower case keyword"),
+        ("qc", "DONE\nVerdict: PASS", "mixed case keyword"),
+    ):
+        assert _rejects_value(parse_verdict, role, text), why
+
+
+def _rejects_value(fn, *args):
+    try:
+        fn(*args)
+    except ValueError:
+        return True
+    return False
+
+
 def demo():
     b = {"goal": "g", "design_dir": "docs/design/x", "gate": ["pytest -q"], "phases": [],
          "agents": {}, "models": {}, "log": []}
@@ -372,6 +422,7 @@ def demo():
     _demo_storage()
     _demo_ops()
     _demo_advisor()
+    _demo_verdict()
     print("ok")
 
 

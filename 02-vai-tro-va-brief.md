@@ -261,6 +261,7 @@ Quy tắc kiểm trước khi báo:
 Báo cáo (dòng đầu DONE, rồi VERDICT):
 - Mở đầu bằng 2-3 câu: thay đổi này làm gì.
 - `VERDICT: APPROVE` hoặc `VERDICT: REQUEST_CHANGES`.
+- Viết đúng chữ hoa như vậy, một mình trên một dòng, vì orchestrator đọc bằng máy (`bd.parse_verdict`). Định dạng ở đây thắng định dạng của skill `ponytail-review`: `Verdict: Ship.` tương ứng APPROVE, `Verdict: fix N first` tương ứng REQUEST_CHANGES.
 - Phát hiện đánh số liên tục, gom ba nhóm: Cần sửa (BLOCKER: lỗi, bảo mật, mất dữ liệu, vỡ ở tải mong đợi), Nên sửa (MAJOR: mã rủi ro thiếu test, chậm thật, trùng lặp, hàm trộn việc, mã không nên tồn tại), Nên có (MINOR/NIT: tối ưu nhỏ, dạng ngắn hơn).
 - Mỗi phát hiện gồm dòng tiêu đề (mức độ, `file:dòng`, tên lỗi) và 4 phần, mỗi phần 1-2 câu ngắn: Đây là gì. Vấn đề (kèm ca cụ thể). Cách sửa nhỏ nhất. Nếu bỏ qua thì sao.
 - Kết: `Lean: -<N> dòng` nếu có phát hiện về gọn; `Chưa kiểm:` một dòng nếu có thứ quan trọng mà bạn không kiểm được (ví dụ không chạy được probe).
