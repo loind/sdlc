@@ -16,7 +16,7 @@
 | **orchestrator** | Model mạnh nhất bạn có, thinking cao | model mạnh của phiên chính | Điều phối, gộp verdict, quyết định rework hay done, chạy gate, merge, ghi board và ticket | Board, comment ticket, báo cáo cho người dùng |
 | **thinker** (kỹ năng của phiên chính) | Model mạnh, thinking cao | model mạnh của phiên chính | Hỏi người dùng, đọc repo, viết gói thiết kế | `prd.md`, `srs.md`, `design.md`, `phases.md` |
 | **builder check** (sub-agent của thinker) | Model mạnh, ngữ cảnh mới | chưa dùng ở dự án gốc (thêm sau) | Đọc gói thiết kế như kỹ sư phải build theo nó mà không được hỏi người dùng. Chỉ báo chỗ phải đoán, xếp theo mức quan trọng. Chạy một vòng | Danh sách câu hỏi kèm file và mục, hoặc "nothing important left" |
-| **engine** | Model nhanh, rẻ, viết mã tốt | một model "flash" của nhà cung cấp thứ ba | Làm đúng một phase: test đỏ, mã, chạy test | Commit trên nhánh feature, báo cáo `DONE` kèm SHA |
+| **engine** | Model nhanh, rẻ, viết mã tốt | một model "flash" của nhà cung cấp thứ ba | Làm đúng một phase: dự thảo cho advisor, rồi test đỏ, mã, chạy test | Commit trên nhánh feature, báo cáo `DONE` kèm SHA |
 | **advisor** | `xai/grok-4.7`, thinking `xhigh` | grok-4.7 | Chấm dự thảo (≤1500 từ) theo đúng đầu mục engine đưa; thêm tối đa ba gạch nâng cấp. Không phải state board, không tăng vòng, lỗi thì không block phase | `## Comments` điểm 0–5 + `## Nâng cấp` |
 | **qc** | Model mạnh, chạy được lệnh | Sonnet bản mới nhất | Chấm diff theo acceptance, từng `REQ`; tự kiểm bằng chương trình thật | `VERDICT: PASS/FAIL` + từng REQ |
 | **qc2** | Model KHÁC họ với qc, thinking cao | một model thuộc họ khác | Kiểm độc lập song song với qc | `VERDICT: PASS/FAIL` |
@@ -100,9 +100,9 @@ bàn giao: <quyết định đã chọn, bẫy đã gặp, điều người sau 
 |---|---|---|
 | `DONE` | Xong, tự kiểm xanh | Chuyển phase sang `review` |
 | `DONE_WITH_CONCERNS` | Xong nhưng có nghi ngờ | Đi tiếp, ghi nghi ngờ vào `notes`. Chỉ sửa cái ảnh hưởng đúng đắn hoặc phạm vi |
-| `BLOCKED` | Không thể tiếp tục, cần thứ ngoài tầm child | Chặn phase (`board.block`), báo người dùng. Không gửi lại cùng brief |
+| `BLOCKED` | Không thể tiếp tục, cần thứ ngoài tầm child | Chặn phase (`board.block`), báo người dùng. Không gửi lại cùng brief. Riêng advisor: KHÔNG chặn phase, ghi `advisor unavailable` (`bd.advisor_unavailable`) và báo engine đi tiếp (ADR-0002) |
 | `NEEDS_CONTEXT` | Thiếu thông tin orchestrator có | Gửi phần thiếu cho CÙNG child. Không spawn lại |
-| `PROGRESS` | Trước bước dài | Không cần làm gì |
+| `PROGRESS` | Trước bước dài, hoặc engine gửi dự thảo (kèm dòng `DRAFT: <đường dẫn>`) | Không cần làm gì. Có dòng `DRAFT:` từ engine thì gửi advisor (`dispatch_advisor`), phase vẫn ở `engine` |
 
 Reviewer thêm `VERDICT: PASS | FAIL` (qc, qc2) hoặc `VERDICT: APPROVE | REQUEST_CHANGES` (code-review).
 

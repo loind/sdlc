@@ -181,7 +181,7 @@ Child chạy mà không có hạn thì không ai biết nó treo hay đang làm.
 - **Thang xử lý:**
   1. Tiến trình của child dùng ≥ 90% CPU hơn 5 phút: kill **tiến trình đó** (không kill child), báo child đã kill gì và vì sao, nhắc bọc lệnh bằng giới hạn giờ.
   2. Quá deadline, hoặc im hơn 10 phút: gửi MỘT tin yêu cầu báo cáo ngay, kèm cái đã có.
-  3. Lần heartbeat kế tiếp vẫn im: `board.block` phase và báo người dùng. Không xoá child khi chưa báo người dùng.
+  3. Lần heartbeat kế tiếp vẫn im: `board.block` phase và báo người dùng. Không xoá child khi chưa báo người dùng. Riêng advisor: không chặn phase, ghi `advisor unavailable` (`bd.advisor_unavailable`) và báo engine đi tiếp (ADR-0002).
 - **Im lặng khi không có gì thay đổi.** Chỉ báo người dùng khi có thay đổi hoặc có child treo.
 - **Không tắt heartbeat khi còn child `running`**, dù child đó trông đã treo (bài 4 ở [`05`](05-bai-hoc.md)).
 - **Child treo trong lệnh:** xem CPU của kernel child (`ps -Ao pid,etime,pcpu,command`), nối tiến trình với worktree của nó (`lsof -p <pid> | grep cwd`), loại tiến trình của chính mình. SIGINT thường bị bỏ qua, SIGTERM trên kernel của child thường đưa nó về trạng thái rỗi và nó gửi nốt kết quả.

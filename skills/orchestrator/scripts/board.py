@@ -8,6 +8,9 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+if not __debug__:  # mọi kiểm tra của board là assert; python -O gỡ hết chúng và board nhận mọi chuyển trạng thái
+    raise RuntimeError("board.py cần assert: không chạy với python -O hay PYTHONOPTIMIZE")
+
 BOARD = Path(".prime/orchestrator/board.json")  # the one and only board path
 FLOW = {"pending": "engine", "engine": "review", "review": "done"}
 LOG_KEEP = 200  # ponytail: flat list, move to a rotating file if a run outgrows it
@@ -40,12 +43,17 @@ def save(board, path=BOARD):
     p.parent.mkdir(parents=True, exist_ok=True)
     board.setdefault("schema_version", SCHEMA_VERSION)
     board["log"] = board.get("log", [])[-LOG_KEEP:]
-    tmp = p.with_name(p.name + ".tmp")  # same directory, so os.replace is a rename, not a copy
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(json.dumps(board, indent=2, ensure_ascii=False))
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, p)
+    # Same directory, so os.replace is a rename. A unique name per write: two writers never share a tmp file.
+    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(board, indent=2, ensure_ascii=False))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, p)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
     return p
 
 
@@ -104,8 +112,12 @@ def advance(board, phase_id, *, rework=False, note="", gate=None):
         after = FLOW[before]
         if after == "done":
             assert gate, f"phase {phase_id}: review -> done requires a gate run"
-            failed = [g["cmd"] for g in gate if not g.get("ok")]
+            # Trust the command's exit code, not the caller's `ok`, and demand the whole configured gate ran.
+            failed = [g["cmd"] for g in gate if g.get("exit") != 0]
             assert not failed, f"phase {phase_id}: gate failed: {failed}"
+            ran = {g["cmd"] for g in gate}
+            missing = [c for c in board.get("gate", []) + phase.get("phase_gate", []) if c not in ran]
+            assert not missing, f"phase {phase_id}: gate not run: {missing}"
             phase["gate"] = gate
         phase["status"] = after
     if note:
@@ -187,7 +199,11 @@ def parse_verdict(role, text):
     `Verdict: Ship.` is deliberately not accepted.
     """
     allowed = VERDICTS[role]
-    found = {m.group(1) for m in re.finditer(r"^VERDICT: (\S+)[ \t]*$", text, re.M)}
+    first = next((line for line in text.splitlines() if line.strip()), "")
+    if not re.match(r"(DONE|DONE_WITH_CONCERNS)\b", first):
+        raise ValueError(f"{role}: a verdict needs a final report starting with DONE or DONE_WITH_CONCERNS, got {first[:40]!r}")
+    body = re.sub(r"^```.*?^```", "", text, flags=re.M | re.S)  # a VERDICT line quoted inside a code fence is not one
+    found = {m.group(1) for m in re.finditer(r"^VERDICT: (\S+)[ \t]*$", body, re.M)}
     if len(found) != 1 or next(iter(found)) not in allowed:
         raise ValueError(f"{role}: need exactly one `VERDICT: {'|'.join(allowed)}` line, got {sorted(found) or 'none'}")
     return allowed[found.pop()]
@@ -258,7 +274,7 @@ def _demo_storage():
         assert b["schema_version"] == SCHEMA_VERSION and b["deadlines"] == {} and b["adr_seq"] == 0
         b["goal"] = "Gateway giới hạn tốc độ"
         save(b, p)
-        assert not p.with_name("board.json.tmp").exists(), "save must leave no tmp file behind"
+        assert not list(p.parent.glob("*.tmp")), "save must leave no tmp file behind"
         assert load(p)["goal"] == b["goal"], "utf-8 must round-trip"
 
         before, real_replace = p.read_text(encoding="utf-8"), os.replace
@@ -274,6 +290,7 @@ def _demo_storage():
         finally:
             os.replace = real_replace
         assert p.read_text(encoding="utf-8") == before, "a failed save must leave the old board intact"
+        assert not list(p.parent.glob("*.tmp")), "a failed save must not leave its tmp file"
 
         old = Path(d) / "old.json"
         old.write_text(json.dumps({"goal": "old", "phases": []}))
@@ -356,7 +373,9 @@ def _demo_verdict():
     assert parse_verdict("qc", "DONE\nVERDICT: FAIL\nREQ-001 FAIL thiếu index") is False
     assert parse_verdict("code-reviewer", "DONE\nMở đầu.\nVERDICT: APPROVE\n") is True
     assert parse_verdict("code-reviewer", "DONE\nVERDICT: REQUEST_CHANGES  \n1. Lỗi") is False
-    assert parse_verdict("qc", "VERDICT: PASS\nVERDICT: PASS") is True, "the same line twice is one verdict"
+    assert parse_verdict("qc", "DONE\nVERDICT: PASS\nVERDICT: PASS") is True, "the same line twice is one verdict"
+    assert parse_verdict("qc", "DONE_WITH_CONCERNS\nVERDICT: PASS") is True
+    assert parse_verdict("qc", "DONE\nVERDICT: FAIL\n```\nVERDICT: PASS\n```") is False, "a fenced line does not count"
     for role, text, why in (
         ("code-reviewer", "DONE\nVERDICT: PASS", "PASS is not a code-reviewer token"),
         ("qc", "DONE\nVERDICT: APPROVE", "APPROVE is not a qc token"),
@@ -366,6 +385,9 @@ def _demo_verdict():
         ("qc", "DONE\nVERDICT: PASS.", "trailing text after the token"),
         ("qc", "DONE\n- `VERDICT: PASS` hoặc `VERDICT: FAIL`", "an echoed instruction is not a verdict"),
         ("qc", "", "empty reply"),
+        ("qc", "BLOCKED\nVERDICT: PASS", "a BLOCKED report is not a verdict"),
+        ("qc", "PROGRESS\nVERDICT: PASS", "a PROGRESS line is not a final report"),
+        ("qc", "DONE\n```\nVERDICT: PASS\n```\nREQ-1 FAIL", "the only VERDICT line is inside a code fence"),
         ("qc", "DONE\nReviewer nói VERDICT: PASS", "a mention in the middle of a line is not a verdict"),
         ("qc", "DONE\nVERDICT: PASS kèm ghi chú", "words after the token"),
         ("qc", "DONE\nverdict: PASS", "lower case keyword"),
@@ -413,6 +435,10 @@ def demo():
     assert "blocked_reason" not in b["phases"][0]
     assert _rejects(unblock, b, one), "unblock on a non-blocked phase must fail"
 
+    lying = [{"cmd": "pytest -q", "exit": 1, "ok": True}]
+    assert _rejects(advance, b, one, gate=lying), "the exit code wins over a caller's ok=True"
+    assert _rejects(advance, b, one, gate=[{"cmd": "true", "exit": 0, "ok": True}]), \
+        "a gate that skipped the configured commands must fail"
     green = [{"cmd": "pytest -q", "exit": 0, "ok": True}]
     advance(b, one, gate=green)                      # review  -> done
     assert b["phases"][0]["gate"] == green
@@ -427,4 +453,7 @@ def demo():
 
 
 if __name__ == "__main__":
+    import sys
+    if sys.argv[1:] not in ([], ["demo"]):
+        sys.exit("dùng: board.py [demo]")
     demo()
