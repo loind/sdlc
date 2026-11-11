@@ -9,7 +9,7 @@
 **Nhật ký phase <N> (orchestrator, dd/mm/yyyy)**
 
 - 09:10 Mở việc. Ticket: <repo>#<NN>. Nhánh: `feature/<NN>-<slug>`. Worktree: `<đường dẫn>`.
-- Model: engine `<model>`, qc `<model>`, qc2 `<model>`, code-review `<model>`.
+- Model: engine `<model>`, qc `<model>`, code-review `<model>`.
 - Gói thiết kế: `docs/design/<slug>/`. Gate chung xanh trên cây sạch (<lệnh>, exit 0).
 ```
 
@@ -24,7 +24,6 @@
 ```markdown
 - 11:20 Review vòng <r> (HEAD `<sha>`):
   - qc: FAIL. REQ-002 thiếu: <điều thiếu> (`file:dòng`).
-  - qc2: PASS. Ghi nhận MINOR: <...>.
   - code-review: REQUEST_CHANGES. MAJOR: <...> (`file:dòng`).
   - Khác biệt giữa reviewer: <ghi lại>.
 ```

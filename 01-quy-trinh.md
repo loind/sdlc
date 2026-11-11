@@ -8,7 +8,7 @@ Mỗi bước có **đầu vào**, **việc làm**, **DoD** (Definition of Done:
 |---|---|---|
 | **Người dùng** | Trả lời câu hỏi thiết kế. Duyệt gói thiết kế. Quyết định khi có đánh đổi. Thông báo "đã ổn" để vào `develop`. Quyết định phát hành. Quyết định ngoại lệ cho cổng chặn. | Không phải đọc diff từng dòng. Không phải tìm thông tin agent tự tra được. |
 | **Orchestrator** (phiên điều phối) | Đọc gói thiết kế. Ghi board. Giao việc cho child kèm deadline. Gộp verdict. Chạy gate. Merge. Kích CI. Deploy. Kiểm. Ghi ticket. Báo người dùng. | **Không tự sửa mã, test, fixture, kể cả sửa "nhỏ".** Mọi sửa mã đi qua một engine được giao. Không tự nới cổng chặn. Không tự phát hành. |
-| **Child** (engine, qc, qc2, code-review, documenter, research, verifier...) | Làm đúng một việc được giao, trong ngữ cảnh sạch. Báo cáo với dòng trạng thái đầu tiên. | Không mở rộng phạm vi. Không tự `push`/tag. Không sinh child con. Không đụng việc của vai khác. |
+| **Child** (engine, qc, code-review, documenter, research, verifier...) | Làm đúng một việc được giao, trong ngữ cảnh sạch. Báo cáo với dòng trạng thái đầu tiên. | Không mở rộng phạm vi. Không tự `push`/tag. Không sinh child con. Không đụng việc của vai khác. |
 
 Lý do orchestrator không sửa mã: nó giữ ngữ cảnh của cả dự án và đóng vai người quyết định. Nếu nó tự sửa, nó vừa viết vừa chấm bài của chính mình, và bản sửa "nhỏ" không đi qua review.
 
@@ -74,7 +74,7 @@ sequenceDiagram
   participant O as orchestrator
   participant E as engine
   participant A as advisor
-  participant Q as qc / qc2
+  participant Q as qc
   participant C as code-review
   O->>E: brief + deadline (phase N)
   E-->>O: dự thảo + đầu mục cần chấm
@@ -103,12 +103,11 @@ sequenceDiagram
 2. **advisor** (`advisor-p<phase>-draft`, model `xai/grok-4.7`, thinking `xhigh`) chỉ chấm đúng các đầu mục engine đưa, điểm 0–5 kèm nhận xét, rồi tối đa ba gạch nâng cấp ngắn. Chỉ đọc thứ engine đưa: thiếu bằng chứng thì ghi `thiếu bằng chứng`, không tự đọc repo, trừ path được liệt kê. Không sửa mã, không thêm đầu mục. Advisor **không phải trạng thái board** (board vẫn `pending -> engine -> review -> done`), **không tăng round** và **không tính vào giới hạn 3 vòng review**. Điểm advisor **không** đóng phase và **không** tự thành vòng sửa: orchestrator gửi điểm về engine. Advisor lỗi (host từ chối `xhigh`, provider sập, im lặng sau lần nhắc) thì **không block phase**: orchestrator ghi `advisor unavailable: <lý do>` vào notes và board log (`bd.advisor_unavailable`), rồi báo engine đi tiếp.
 3. **engine** đọc điểm (hoặc thông báo advisor unavailable), ghi hướng đã chọn (kể cả chỗ không theo advisor, kèm lý do), rồi mới phát triển: test đỏ trước, viết mã, chạy test. Commit sớm, từng bước nhỏ, trên nhánh feature. Không `push`. Vòng sửa sau qc hoặc code-review FAIL **không** gửi advisor lại: advisor chỉ chạy lại khi engine viết **dự thảo mới** (`DRAFT:` mới; orchestrator kiểm bằng `bd.advisor_draft`).
 4. **qc** chấm diff **theo acceptance của phase**, từng `REQ` một: PASS hoặc FAIL kèm thứ còn thiếu. Dùng đúng phương pháp kiểm ghi trong SRS. Không kiểm được thì là FAIL, không phải PASS.
-5. **qc2** chấm cùng brief, **cùng model với qc** (người dùng chốt 11/11/2026), nhưng là phiên riêng với ngữ cảnh sạch, độc lập. Mục đích: bắt thứ qc bỏ sót (nhánh lỗi, dữ liệu biên, lộ bí mật).
-6. **code-review** đọc và áp dụng skill `ponytail-review` (v5). Đây là review **chất lượng đầy đủ**, không chỉ tìm mã thừa. Thứ tự quan trọng: **đúng, an toàn, chịu tải, có test, nhanh, gọn** (xoá hơn thêm). Reviewer đọc **cả mã liên quan** (nơi gọi hàm đã đổi, hàm được gọi, test, README), không chỉ diff, và ước tải mong đợi từ repo. Không chấm requirement (việc của qc). Trả `APPROVE` hoặc `REQUEST_CHANGES`. Mỗi phát hiện có mức độ (`BLOCKER`, `MAJOR`, `MINOR`, `NIT`), `file:dòng`, ca cụ thể làm hỏng, cách sửa nhỏ nhất và hậu quả nếu bỏ qua. Chi tiết ở [`02`](02-vai-tro-va-brief.md#code-review).
-7. Orchestrator **chờ đủ** các reviewer rồi mới quyết. Mới có một phản hồi chưa phải verdict. Phản hồi không có đúng một dòng `VERDICT:` hợp lệ cho vai đó (`bd.parse_verdict` báo lỗi) cũng không phải verdict và không bao giờ là PASS: gửi lại đúng định dạng cho cùng reviewer.
-8. Quy tắc gộp: **FAIL hoặc REQUEST_CHANGES của bất kỳ ai** là một vòng sửa. Khác biệt giữa các reviewer ghi vào báo cáo (đó là dữ liệu để chọn lại model).
-9. Tất cả đạt (qc `VERDICT: PASS`, code-review `VERDICT: APPROVE`): orchestrator tự chạy gate (chung trước, riêng sau, lệnh rẻ nhất trước, dừng ở lệnh đỏ đầu tiên).
-10. Gate đỏ là việc của engine, không phải phát hiện của reviewer. Gửi lệnh và output cho engine. Phase ở lại `review`.
+5. **code-review** đọc và áp dụng skill `ponytail-review` (v5). Đây là review **chất lượng đầy đủ**, không chỉ tìm mã thừa. Thứ tự quan trọng: **đúng, an toàn, chịu tải, có test, nhanh, gọn** (xoá hơn thêm). Reviewer đọc **cả mã liên quan** (nơi gọi hàm đã đổi, hàm được gọi, test, README), không chỉ diff, và ước tải mong đợi từ repo. Không chấm requirement (việc của qc). Trả `APPROVE` hoặc `REQUEST_CHANGES`. Mỗi phát hiện có mức độ (`BLOCKER`, `MAJOR`, `MINOR`, `NIT`), `file:dòng`, ca cụ thể làm hỏng, cách sửa nhỏ nhất và hậu quả nếu bỏ qua. Chi tiết ở [`02`](02-vai-tro-va-brief.md#code-review).
+6. Orchestrator **chờ đủ** các reviewer rồi mới quyết. Mới có một phản hồi chưa phải verdict. Phản hồi không có đúng một dòng `VERDICT:` hợp lệ cho vai đó (`bd.parse_verdict` báo lỗi) cũng không phải verdict và không bao giờ là PASS: gửi lại đúng định dạng cho cùng reviewer.
+7. Quy tắc gộp: **FAIL hoặc REQUEST_CHANGES của bất kỳ ai** là một vòng sửa. Khác biệt giữa các reviewer ghi vào báo cáo (đó là dữ liệu để chọn lại model).
+8. Tất cả đạt (qc `VERDICT: PASS`, code-review `VERDICT: APPROVE`): orchestrator tự chạy gate (chung trước, riêng sau, lệnh rẻ nhất trước, dừng ở lệnh đỏ đầu tiên).
+9. Gate đỏ là việc của engine, không phải phát hiện của reviewer. Gửi lệnh và output cho engine. Phase ở lại `review`.
 
 **DoD của phase:** mọi reviewer PASS **và** mọi lệnh gate thoát 0 **và** các lệnh đó do orchestrator chạy, ghi vào board bằng `advance(..., gate=results)`.
 
@@ -198,7 +197,7 @@ Child chạy mà không có hạn thì không ai biết nó treo hay đang làm.
 7. Phát hiện chưa chặn (`MINOR`/`NIT`): ghi vào ticket phụ, không chặn phase.
 8. Thường cần **2 vòng**. Tối đa **3 vòng**. Advisor không phải một vòng: nó không tăng round và không tính vào giới hạn này. Sang vòng 4 mà còn phát hiện chặn thì orchestrator dừng, xem lại thiết kế hoặc phạm vi phase rồi mới quyết (không tự mở vòng 4 mù).
 9. Reviewer **tự đo lại**, không tin lời engine: chạy probe, chạy trên bản sao của cây, so bản cũ với bản mới (A/B). Câu "đã sửa", "test xanh" của engine chỉ là điểm xuất phát (bài học 26 và 27 ở [`05`](05-bai-hoc.md)).
-10. Với thay đổi chạm quyết định bảo mật, chạy **review bảo mật** (code-review) và **QC fuzz vi sai với hệ thống chuẩn** (qc, qc2) **song song**. Hai bên tìm hai loại lỗi khác nhau (bài học 28).
+10. Với thay đổi chạm quyết định bảo mật, chạy **review bảo mật** (code-review) và **QC fuzz vi sai với hệ thống chuẩn** (qc) **song song**. Hai bên tìm hai loại lỗi khác nhau (bài học 28).
 
 ## Khi nào hỏi người dùng
 

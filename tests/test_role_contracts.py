@@ -44,7 +44,6 @@ def need(where, text, *musts):
 # --- verdict: mọi nơi dùng đúng token của bd.VERDICTS
 SOURCES = {
     "qc": {"SKILL.md prompt": skill_prompt("qc"), "mau/brief-qc.md": read("mau/brief-qc.md"), "02 khối qc": doc02_block("qc")},
-    "qc2": {"SKILL.md prompt": skill_prompt("qc2"), "mau/brief-qc2.md": read("mau/brief-qc2.md"), "02 khối qc2": doc02_block("qc2")},
     "code-reviewer": {"SKILL.md prompt": skill_prompt("code-reviewer"), "mau/brief-code-review.md": read("mau/brief-code-review.md"),
                       "02 khối code-review": doc02_block("code-review")},
 }
@@ -59,9 +58,8 @@ if "either PASS" in skill_prompt("code-reviewer"):
 
 # --- Loop và bảng vai nói đúng token, LANG không để child dịch token reviewer
 need("SKILL.md Loop", SKILL, "bd.parse_verdict", "`ValueError`",
-     "qc PASS **and** qc2 PASS **and** code-reviewer APPROVE -> run the gate (shared + `phase_gate`),",
-     "qc FAIL **or** qc2 FAIL **or** code-reviewer REQUEST_CHANGES -> `advance(b, id, rework=True, note=...)`",
-     "dispatch `qc`, `qc2` **and** `code-reviewer` in the same turn",
+     "qc PASS **and** code-reviewer APPROVE -> run the gate (shared + `phase_gate`),",
+     "qc FAIL **or** code-reviewer REQUEST_CHANGES -> `advance(b, id, rework=True, note=...)`",
      "A final report you accept** -> first `bd.clear_deadline(b, <that child's name>)`",
      "answer it with `dispatch(...)`", "`dispatch` the same child the exact format")
 if "Both `PASS`" in SKILL:
@@ -84,14 +82,6 @@ need("02 bảng token, dòng PROGRESS", next(line for line in DOC02.splitlines()
      "`DRAFT:", "dispatch_advisor")
 need("01 thang heartbeat", next(line for line in read("01-quy-trinh.md").splitlines() if "Lần heartbeat kế tiếp vẫn im" in line),
      "Riêng advisor", "bd.advisor_unavailable")
-
-# --- qc2 cùng model với qc: không có mục riêng trong models.json, và pick() phân giải cả hai vai
-import json as _json
-_models = _json.loads(read("skills/orchestrator/models.json"))
-if _models["roles"].get("qc2") != _models["roles"].get("qc"):
-    errors.append("models.json: qc2 phải cùng model với qc (người dùng chốt 11/11/2026)")
-need("SKILL.md pick()", SKILL, '"qc", "qc2", "code-reviewer"')
-need("SKILL.md BUDGET_MIN", SKILL, '"qc2": 20')
 
 if errors:
     sys.exit("\n".join(errors))

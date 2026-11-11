@@ -187,7 +187,7 @@ def advisor_unavailable(board, phase_id, reason):
     log(board, f"phase {phase_id}: {note}")
 
 
-VERDICTS = {"qc": {"PASS": True, "FAIL": False}, "qc2": {"PASS": True, "FAIL": False},
+VERDICTS = {"qc": {"PASS": True, "FAIL": False},
             "code-reviewer": {"APPROVE": True, "REQUEST_CHANGES": False}}
 
 
@@ -195,7 +195,7 @@ def parse_verdict(role, text):
     """Read a reviewer's reply by machine: True = passes the phase, False = asks for changes.
 
     The reply must carry exactly one line `VERDICT: <TOKEN>` (upper case, nothing after the token), and the token
-    must belong to the role: qc/qc2 PASS|FAIL, code-reviewer APPROVE|REQUEST_CHANGES. Anything else raises
+    must belong to the role: qc PASS|FAIL, code-reviewer APPROVE|REQUEST_CHANGES. Anything else raises
     ValueError - that reply is NOT a pass: send the same child the format and wait. ponytail-review's own
     `Verdict: Ship.` is deliberately not accepted.
     """
