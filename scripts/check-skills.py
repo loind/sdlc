@@ -30,19 +30,34 @@ def frontmatter(text):
         if line and not line[0].isspace() and ":" in line:
             key, _, val = line.partition(":")
             out[key.strip()] = val.strip()
-            if plain_scalar_breaks_yaml(val.strip()):
-                problems.append(f"dòng {n}: giá trị của `{key.strip()}` có `: ` hoặc ` #` mà không có dấu nháy, YAML đọc sai "
-                                "(Nested mappings are not allowed). Đặt cả giá trị trong dấu nháy kép hoặc bỏ dấu `:`")
+            why = yaml_problem(val.strip())
+            if why:
+                problems.append(f"dòng {n}: giá trị của `{key.strip()}` {why}, YAML đọc sai. "
+                                "Đặt cả giá trị trong dấu nháy kép (escape nháy kép bên trong) hoặc viết lại")
         elif key and line.strip():
             out[key] = f"{out[key]} {line.strip()}"  # dòng nối tiếp của khối > hoặc |
     raise ValueError("frontmatter không đóng (thiếu --- thứ hai)")
 
 
-def plain_scalar_breaks_yaml(val):
-    """Giá trị một dòng, không nháy, không phải khối (> |) hay danh sách: `: ` mở mapping lồng, ` #` mở comment."""
-    if not val or val[0] in "\"'>|[{&*!%@":
-        return False
-    return ": " in val or " #" in val or val.endswith(":")
+def yaml_problem(val):
+    """Lý do một giá trị một dòng làm YAML đọc sai, hoặc None nếu ổn."""
+    if not val or val[0] in ">|[{":
+        return None  # shortcut: khối > | và flow [ { không được kiểm cân bằng, cần thì dùng parser YAML thật
+    if val[0] == '"':
+        inner = val[1:-1] if len(val) > 1 and val.endswith('"') else None
+        if inner is None or re.search(r'(?<!\\)"', inner):
+            return "là chuỗi nháy kép không đóng đúng hoặc có nháy kép bên trong chưa escape"
+        return None
+    if val[0] == "'":
+        inner = val[1:-1] if len(val) > 1 and val.endswith("'") else None
+        if inner is None or "'" in inner.replace("''", ""):
+            return "là chuỗi nháy đơn không đóng đúng hoặc có nháy đơn bên trong chưa nhân đôi"
+        return None
+    if val[0] in "`@%*&!":
+        return f"không có nháy mà bắt đầu bằng `{val[0]}` (ký tự dành riêng của YAML)"
+    if ": " in val or " #" in val or val.endswith(":"):
+        return "có `: ` hoặc ` #` mà không có dấu nháy (Nested mappings are not allowed)"
+    return None
 
 
 def clean(value):
@@ -83,6 +98,10 @@ def check_dir(root):
         print(f"check-skills: không thấy SKILL.md nào dưới {root}", file=sys.stderr)
         return 2
     bad = 0
+    for d in sorted(Path(root).iterdir()):
+        if d.is_dir() and not d.name.startswith((".", "__")) and not (d / "SKILL.md").is_file():
+            print(f"{d}: thư mục skill không có SKILL.md, agent sẽ không thấy nó", file=sys.stderr)
+            bad += 1
     for f in files:
         for err in check_skill(f):
             print(f"{f}: {err}", file=sys.stderr)
@@ -114,6 +133,14 @@ def self_test():
         ("giá trị có ': ' nhưng trong nháy kép", ok.format(n="good", d="d", c='"Needs a way: the runner"'), None),
         ("giá trị có ': ' trong khối >", "---\nname: good\ndescription: >\n  a: b\ncompatibility: c\n---\n", None),
         ("URL có :// không phải mapping", ok.format(n="good", d="d", c="See https://example.com/x"), None),
+        ("nháy kép lồng chưa escape", ok.format(n="good", d='"Dùng khi nói "xong" việc"', c="c"), "nháy kép"),
+        ("nháy kép không đóng", ok.format(n="good", d='"Dùng khi nói', c="c"), "nháy kép"),
+        ("nháy kép escape đúng", ok.format(n="good", d='"Dùng khi nói \\"xong\\" việc"', c="c"), None),
+        ("nháy đơn lồng chưa nhân đôi", ok.format(n="good", d="'it's'", c="c"), "nháy đơn"),
+        ("nháy đơn nhân đôi đúng", ok.format(n="good", d="'it''s'", c="c"), None),
+        ("bắt đầu bằng backtick", ok.format(n="good", d="`foo` helper", c="c"), "ký tự dành riêng"),
+        ("bắt đầu bằng @", ok.format(n="good", d="@team skill", c="c"), "ký tự dành riêng"),
+        ("bắt đầu bằng *", ok.format(n="good", d="*bold* skill", c="c"), "ký tự dành riêng"),
         ("name viết hoa và gạch dưới", ok.format(n="Bad_Name", d="d", c="c"), "sai quy tắc", "Bad_Name"),
         ("name có hai gạch ngang liền nhau", ok.format(n="a--b", d="d", c="c"), "sai quy tắc", "a--b"),
         ("name dài hơn 64 ký tự", ok.format(n="a" * 65, d="d", c="c"), "sai quy tắc", "a" * 65),
@@ -132,6 +159,14 @@ def self_test():
         bad.parent.mkdir()
         bad.write_text("---\nname: x\ndescription: d\n---\n", encoding="utf-8")
         assert check_dir(d) == 1, "có skill thiếu compatibility phải exit 1"
+    with tempfile.TemporaryDirectory() as d, contextlib.redirect_stderr(io.StringIO()):
+        good = Path(d) / "good" / "SKILL.md"
+        good.parent.mkdir()
+        good.write_text(ok.format(n="good", d="d", c="c"), encoding="utf-8")
+        assert check_dir(d) == 0
+        (Path(d) / "noskillmd").mkdir()
+        (Path(d) / "noskillmd" / "README.md").write_text("x", encoding="utf-8")
+        assert check_dir(d) == 1, "thư mục skill thiếu SKILL.md phải đỏ, không được bỏ qua im lặng"
     print("check-skills --self-test: OK")
     return 0
 

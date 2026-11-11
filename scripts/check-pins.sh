@@ -12,7 +12,9 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # File ghim phụ thuộc cần quét (git pathspec, `*` khớp cả dấu `/`). Chỉnh theo repo của bạn.
-PIN_FILES=('*Cargo.toml' '*Cargo.lock' '*package.json' '*package-lock.json' '*pyproject.toml' '*requirements*.txt' '*go.mod')
+PIN_FILES=('*Cargo.toml' '*Cargo.lock' '*package.json' '*package-lock.json' '*yarn.lock' '*pnpm-lock.yaml'
+           '*pyproject.toml' '*poetry.lock' '*uv.lock' '*Pipfile' '*Pipfile.lock' '*requirements*.txt' '*go.mod'
+           '*Dockerfile*')
 
 run_check() {
   local branch="${1#origin/}" hits rc
@@ -49,6 +51,7 @@ self_test_body() {
   cp "${BASH_SOURCE[0]}" "$chk"
   printf 'foo = { git = "x", tag = "TEST-12" }\n' > "$tmp/Cargo.toml"
   printf 'source = "git+x?tag=TEST-3"\nbar = "LATEST-9"\n' > "$tmp/sub/Cargo.lock"
+  for f in uv.lock poetry.lock yarn.lock pnpm-lock.yaml Pipfile Dockerfile; do printf 'pin = "TEST-4"\n' > "$tmp/sub/$f"; done
   git -C "$tmp" init -q && git -C "$tmp" add -A || return 2
 
   for b in develop master release/2026.11.10 hotfix/12 revert/abc "" origin/develop; do
@@ -61,9 +64,13 @@ self_test_body() {
   grep -q '^Cargo.toml:1:' <<<"$out" && grep -q '^sub/Cargo.lock:1:' <<<"$out" \
     || { echo "self-test: thiếu file:dòng của cả hai file ghim: $out" >&2; return 1; }
   grep -q 'LATEST-9' <<<"$out" && { echo "self-test: LATEST-9 không phải TEST-<n>: $out" >&2; return 1; }
+  for f in uv.lock poetry.lock yarn.lock pnpm-lock.yaml Pipfile Dockerfile; do
+    grep -q "^sub/$f:1:" <<<"$out" || { echo "self-test: không quét $f: $out" >&2; return 1; }
+  done
 
   printf 'foo = { git = "x", tag = "MASTER-7" }\n' > "$tmp/Cargo.toml"
   printf 'source = "git+x?tag=MASTER-7"\n' > "$tmp/sub/Cargo.lock"
+  for f in uv.lock poetry.lock yarn.lock pnpm-lock.yaml Pipfile Dockerfile; do printf 'pin = "MASTER-7"\n' > "$tmp/sub/$f"; done
   git -C "$tmp" add -A
   expect 0 "chỉ MASTER-<n> trên develop phải xanh" bash "$chk" --branch develop || return 1
   expect 2 "git grep lỗi phải exit 2 (không phải OK giả)" env GIT_DIR="$tmp/khong-co-repo" bash "$chk" --branch develop || return 1

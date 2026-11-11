@@ -8,6 +8,16 @@ LOG="${GATE_LOG:-/tmp/gate-$(date +%Y%m%d-%H%M%S).log}"
 TIMEOUT_SEC="${TIMEOUT_SEC:-600}"
 : > "$LOG"
 
+# Không có lệnh nào, hay TIMEOUT_SEC không phải số dương, đều là gate rỗng: không được báo xanh.
+if [ "$#" -eq 0 ]; then
+  echo "[gate] REJECT: không có lệnh gate nào" | tee -a "$LOG" >&2
+  exit 2
+fi
+if ! [[ "$TIMEOUT_SEC" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[gate] REJECT: TIMEOUT_SEC phải là số giây dương, nhận '$TIMEOUT_SEC'" | tee -a "$LOG" >&2
+  exit 2
+fi
+
 bounded() {
   local secs="$1"; shift
   if command -v timeout >/dev/null 2>&1; then
@@ -20,7 +30,12 @@ bounded() {
 i=0
 for cmd in "$@"; do
   i=$((i+1))
-  if [[ "$cmd" == *"|"* || "$cmd" == *"&"* || "$cmd" == *";"* ]]; then
+  if [[ -z "${cmd//[[:space:]]/}" ]]; then
+    echo "[gate $i] REJECT: lệnh gate rỗng" | tee -a "$LOG" >&2
+    exit 2
+  fi
+  # Xuống dòng nối hai lệnh y như ';': exit code của lệnh đầu bị che.
+  if [[ "$cmd" == *"|"* || "$cmd" == *"&"* || "$cmd" == *";"* || "$cmd" == *$'\n'* ]]; then
     echo "[gate $i] REJECT: gate phai la 1 lenh don, cam pipe/&&/;: $cmd" | tee -a "$LOG" >&2
     exit 2
   fi

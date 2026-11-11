@@ -57,8 +57,10 @@ if "either PASS" in skill_prompt("code-reviewer"):
     errors.append("SKILL.md: code-reviewer còn hợp đồng cũ 'either PASS'")
 
 # --- Loop và bảng vai nói đúng token, LANG không để child dịch token reviewer
-need("SKILL.md Loop", SKILL, "bd.parse_verdict", "`ValueError`", "qc PASS **and** code-reviewer APPROVE",
-     "qc FAIL **or** code-reviewer REQUEST_CHANGES")
+need("SKILL.md Loop", SKILL, "bd.parse_verdict", "`ValueError`",
+     "qc PASS **and** code-reviewer APPROVE -> run the gate (shared + `phase_gate`),",
+     "qc FAIL **or** code-reviewer REQUEST_CHANGES -> `advance(b, id, rework=True, note=...)`",
+     "-> first\n   `bd.clear_deadline(b, <that child's name>)`")
 if "Both `PASS`" in SKILL:
     errors.append("SKILL.md Loop: còn 'Both `PASS`'")
 need("SKILL.md bảng vai", SKILL, "`VERDICT: APPROVE` or `VERDICT: REQUEST_CHANGES`", "`VERDICT: PASS` or `VERDICT: FAIL`")
@@ -71,6 +73,14 @@ need("engine / SKILL.md prompt", ENGINE["SKILL.md prompt"], "first line PROGRESS
      "advisor unavailable", "STOP")
 for where in ("mau/brief-engine.md", "02 khối engine"):
     need(f"engine / {where}", ENGINE[where], "dòng đầu `PROGRESS`, dòng hai `DRAFT: <đường dẫn dự thảo>`", "1500", "advisor unavailable")
+
+# --- quy tắc chung "block phase" phải có ngoại lệ advisor (ADR-0002), kể cả trong bảng token và thang heartbeat
+row = next(line for line in DOC02.splitlines() if line.startswith("| `BLOCKED` |"))
+need("02 bảng token, dòng BLOCKED", row, "Riêng advisor", "bd.advisor_unavailable")
+need("02 bảng token, dòng PROGRESS", next(line for line in DOC02.splitlines() if line.startswith("| `PROGRESS` |")),
+     "`DRAFT:", "dispatch_advisor")
+need("01 thang heartbeat", next(line for line in read("01-quy-trinh.md").splitlines() if "Lần heartbeat kế tiếp vẫn im" in line),
+     "Riêng advisor", "bd.advisor_unavailable")
 
 if errors:
     sys.exit("\n".join(errors))
