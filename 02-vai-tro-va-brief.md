@@ -101,7 +101,7 @@ bàn giao: <quyết định đã chọn, bẫy đã gặp, điều người sau 
 | `DONE` | Xong, tự kiểm xanh | Chuyển phase sang `review` |
 | `DONE_WITH_CONCERNS` | Xong nhưng có nghi ngờ | Đi tiếp, ghi nghi ngờ vào `notes`. Chỉ sửa cái ảnh hưởng đúng đắn hoặc phạm vi |
 | `BLOCKED` | Không thể tiếp tục, cần thứ ngoài tầm child | Chặn phase (`board.block`), báo người dùng. Không gửi lại cùng brief. Riêng advisor: KHÔNG chặn phase, ghi `advisor unavailable` (`bd.advisor_unavailable`) và báo engine đi tiếp (ADR-0002) |
-| `NEEDS_CONTEXT` | Thiếu thông tin orchestrator có | Gửi phần thiếu cho CÙNG child. Không spawn lại |
+| `NEEDS_CONTEXT` | Thiếu thông tin orchestrator có | Gửi phần thiếu cho CÙNG child qua `dispatch` (deadline mới). Không spawn lại |
 | `PROGRESS` | Trước bước dài, hoặc engine gửi dự thảo (kèm dòng `DRAFT: <đường dẫn>`) | Không cần làm gì. Có dòng `DRAFT:` từ engine thì gửi advisor (`dispatch_advisor`), phase vẫn ở `engine` |
 
 Reviewer thêm `VERDICT: PASS | FAIL` (qc, qc2) hoặc `VERDICT: APPROVE | REQUEST_CHANGES` (code-review).

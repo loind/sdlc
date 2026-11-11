@@ -56,6 +56,8 @@ class FakeRlm:
 
 class FakeMessage:
     async def send(self, message, *, receiver_role, receiver_name):
+        if calls.get("send_error"):
+            raise RuntimeError(calls["send_error"])
         calls["send"].append(dict(message=message, role=receiver_role, name=receiver_name))
 
 
@@ -186,6 +188,35 @@ def test_dispatch_failures():
     calls["spawn_error"] = None
     assert "engine-p9" not in b["deadlines"], "a child that never got the brief must not owe a report"
 
+    bd.set_deadline(b, "engine-p9", 45)
+    before = b["deadlines"]["engine-p9"]
+    calls["existing"], calls["send_error"] = ["engine-p9"], "send failed"
+    try:
+        asyncio.run(ns["dispatch"]("engine", {"id": 9, "round": 1}, "REWORK", b))
+        raise AssertionError("a failed send must raise")
+    except RuntimeError:
+        pass
+    calls["send_error"], calls["existing"] = None, []
+    assert b["deadlines"].get("engine-p9") == before, "a reused child still owes its earlier report"
+
+
+def test_run_gate_snippet():
+    import shutil, subprocess
+    Path("scripts").mkdir(exist_ok=True)
+    shutil.copy(ROOT / "scripts" / "run-gate.sh", "scripts/run-gate.sh")
+
+    async def bash(cmd):
+        return subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
+
+    for shared, own, want in ((["true"], ["true"], "done"), (["true"], ["false"], "review"), (["false"], ["true"], "review")):
+        b = bd.load(Path("/nonexistent/board.json"))
+        b["gate"] = shared
+        pid = bd.add_phase(b, "p", gate=own)
+        bd.advance(b, pid); bd.advance(b, pid)
+        ns = {"bd": bd, "b": b, "bash": bash, "phase": b["phases"][0], "phase_id": pid}
+        run(block("async def run_gate"), ns)   # nguyên văn trong SKILL.md; gate đỏ không được ném lỗi
+        assert b["phases"][0]["status"] == want, (shared, own, b["phases"][0]["status"])
+
 
 if __name__ == "__main__":
     start = os.getcwd()
@@ -196,6 +227,7 @@ if __name__ == "__main__":
             test_dispatch_snippet()
             test_advisor_snippet()
             test_dispatch_failures()
+            test_run_gate_snippet()
         finally:
             os.chdir(start)
     print("skill snippets ok")

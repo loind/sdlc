@@ -39,24 +39,44 @@ def frontmatter(text):
     raise ValueError("frontmatter không đóng (thiếu --- thứ hai)")
 
 
+YAML_ESCAPES = set('0abt\tnvfre "/\\N_LPxuU')  # escape hợp lệ trong chuỗi nháy kép của YAML
+
+
+def _tail_ok(rest):
+    """Sau dấu nháy đóng chỉ được có khoảng trắng, hoặc khoảng trắng rồi comment `# ...`."""
+    return not rest.strip() or rest.lstrip().startswith("#")
+
+
 def yaml_problem(val):
-    """Lý do một giá trị một dòng làm YAML đọc sai, hoặc None nếu ổn."""
+    """Lý do một giá trị một dòng làm YAML đọc sai hoặc đổi nghĩa, hoặc None nếu ổn."""
     if not val or val[0] in ">|[{":
-        return None  # shortcut: khối > | và flow [ { không được kiểm cân bằng, cần thì dùng parser YAML thật
+        return None  # shortcut: khối > | và flow [ { không được kiểm, cần thì dùng parser YAML thật
     if val[0] == '"':
-        inner = val[1:-1] if len(val) > 1 and val.endswith('"') else None
-        if inner is None or re.search(r'(?<!\\)"', inner):
-            return "là chuỗi nháy kép không đóng đúng hoặc có nháy kép bên trong chưa escape"
-        return None
+        i = 1
+        while i < len(val):
+            if val[i] == "\\":
+                if i + 1 >= len(val) or val[i + 1] not in YAML_ESCAPES:
+                    return "là chuỗi nháy kép có escape không hợp lệ (YAML chỉ nhận \\n, \\t, \\\", \\\\...)"
+                i += 2
+                continue
+            if val[i] == '"':
+                return None if _tail_ok(val[i + 1:]) else "là chuỗi nháy kép có chữ sau dấu nháy đóng (nháy kép bên trong chưa escape?)"
+            i += 1
+        return "là chuỗi nháy kép không đóng"
     if val[0] == "'":
-        inner = val[1:-1] if len(val) > 1 and val.endswith("'") else None
-        if inner is None or "'" in inner.replace("''", ""):
-            return "là chuỗi nháy đơn không đóng đúng hoặc có nháy đơn bên trong chưa nhân đôi"
-        return None
-    if val[0] in "`@%*&!":
-        return f"không có nháy mà bắt đầu bằng `{val[0]}` (ký tự dành riêng của YAML)"
+        i = 1
+        while i < len(val):
+            if val[i] == "'":
+                if val[i + 1:i + 2] == "'":  # '' là một dấu nháy đơn đã escape
+                    i += 2
+                    continue
+                return None if _tail_ok(val[i + 1:]) else "là chuỗi nháy đơn có chữ sau dấu nháy đóng (nháy đơn bên trong chưa nhân đôi?)"
+            i += 1
+        return "là chuỗi nháy đơn không đóng"
+    if val[0] in "`@%*&!," or val[:2] in ("- ", "? "):
+        return f"không có nháy mà bắt đầu bằng `{val[:2].strip()}` (ký tự dành riêng của YAML)"
     if ": " in val or " #" in val or val.endswith(":"):
-        return "có `: ` hoặc ` #` mà không có dấu nháy (Nested mappings are not allowed)"
+        return "có `: ` hoặc ` #` mà không có dấu nháy (Nested mappings are not allowed, hoặc bị cắt thành comment)"
     return None
 
 
@@ -141,6 +161,14 @@ def self_test():
         ("bắt đầu bằng backtick", ok.format(n="good", d="`foo` helper", c="c"), "ký tự dành riêng"),
         ("bắt đầu bằng @", ok.format(n="good", d="@team skill", c="c"), "ký tự dành riêng"),
         ("bắt đầu bằng *", ok.format(n="good", d="*bold* skill", c="c"), "ký tự dành riêng"),
+        ("escape không hợp lệ \\p", ok.format(n="good", d='"C:\\path"', c="c"), "escape không hợp lệ"),
+        ("nháy đóng bị escape nên không đóng", ok.format(n="good", d='"x\\"', c="c"), "không đóng"),
+        ("\\\\ rồi nháy kép đóng sớm", ok.format(n="good", d='"a\\\\" tail"', c="c"), "chữ sau dấu nháy"),
+        ("bắt đầu bằng '- '", ok.format(n="good", d="- x", c="c"), "ký tự dành riêng"),
+        ("bắt đầu bằng '? '", ok.format(n="good", d="? x", c="c"), "ký tự dành riêng"),
+        ("bắt đầu bằng ','", ok.format(n="good", d=",x", c="c"), "ký tự dành riêng"),
+        ("nháy kép rồi comment là hợp lệ", ok.format(n="good", d='"ok" # comment', c="c"), None),
+        ("nháy đơn rồi comment là hợp lệ", ok.format(n="good", d="'a' # c", c="c"), None),
         ("name viết hoa và gạch dưới", ok.format(n="Bad_Name", d="d", c="c"), "sai quy tắc", "Bad_Name"),
         ("name có hai gạch ngang liền nhau", ok.format(n="a--b", d="d", c="c"), "sai quy tắc", "a--b"),
         ("name dài hơn 64 ký tự", ok.format(n="a" * 65, d="d", c="c"), "sai quy tắc", "a" * 65),

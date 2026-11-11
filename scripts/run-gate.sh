@@ -34,6 +34,12 @@ for cmd in "$@"; do
     echo "[gate $i] REJECT: lệnh gate rỗng" | tee -a "$LOG" >&2
     exit 2
   fi
+  # Gate bị comment mất ("# pytest -q") chạy ra exit 0. Lệnh no-op tường minh (true, :) thì không chặn.
+  trimmed="${cmd#"${cmd%%[![:space:]]*}"}"
+  if [[ "$trimmed" == \#* ]]; then
+    echo "[gate $i] REJECT: lệnh gate chỉ là comment: $cmd" | tee -a "$LOG" >&2
+    exit 2
+  fi
   # Xuống dòng nối hai lệnh y như ';': exit code của lệnh đầu bị che.
   if [[ "$cmd" == *"|"* || "$cmd" == *"&"* || "$cmd" == *";"* || "$cmd" == *$'\n'* ]]; then
     echo "[gate $i] REJECT: gate phai la 1 lenh don, cam pipe/&&/;: $cmd" | tee -a "$LOG" >&2

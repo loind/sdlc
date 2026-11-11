@@ -240,8 +240,12 @@ for n, cmd in enumerate(b["gate"] + phase.get("phase_gate", []), 1):
     results.append(await run_gate(cmd, n))
     if not results[-1]["ok"]:
         break   # fail fast: never spend a long stage on a build that already failed
-bd.advance(b, phase_id, gate=results)   # raises unless every command that ran passed
+if results and all(r["ok"] for r in results):
+    bd.advance(b, phase_id, gate=results)   # done; raises if a configured command did not run
+# else: gate red - send results[-1]["cmd"] and its log to the engine; the phase stays in `review`
 ```
+
+A phase with no gate command at all can never close: every phase in `phases.md` carries one.
 
 Order the gate cheapest-first so the expensive stage only runs on something already proven.
 `advance(..., gate=...)` refuses without passing results, so neither reviewer can close a phase on
@@ -342,6 +346,7 @@ THINKING = {"advisor": "xhigh"}   # the advisor skill demands it; every other ch
 async def dispatch(role, phase, brief, board):
     assert board.get("heartbeat"), "start the heartbeat first (see Heartbeat and deadlines)"
     name = child_name(role, phase)
+    prev = board.get("deadlines", {}).get(name)                 # a reused child may still owe an earlier report
     due = bd.set_deadline(board, name, BUDGET_MIN[role])        # absolute, from the machine clock
     mid, tail = due - timedelta(minutes=BUDGET_MIN[role] / 2), due + timedelta(minutes=5)
     frame = FRAME.format(tz=due.tzname(), progress=f"{mid:%H:%M}",     # FRAME, LANG: see Role briefs
@@ -354,7 +359,10 @@ async def dispatch(role, phase, brief, board):
                             name=name, model=board.get("models", {}).get(role),
                             thinking=THINKING.get(role))
     except Exception:
-        bd.clear_deadline(board, name)   # a child that never got the brief owes no report
+        if prev is None:
+            bd.clear_deadline(board, name)   # a child that never got the brief owes no report
+        else:
+            board["deadlines"][name] = prev  # it still owes the report it had before this failed message
         raise
     board.setdefault("agents", {})[role] = name
     bd.save(board)       # the board is the record, your context is not
@@ -451,7 +459,7 @@ await agent_message.send("BLOCKED: cluster unreachable ...", receiver_role="pare
 | `DONE` | Finished, its own checks green | Advance the phase |
 | `DONE_WITH_CONCERNS` | Finished but flagging doubt | Advance, put the concerns in `notes`; fix only what affects correctness or scope |
 | `BLOCKED` | Cannot proceed at all | `bd.block(b, id, reason)`, do NOT advance, tell the user - something outside the child must change. Not for the advisor: see below |
-| `NEEDS_CONTEXT` | Missing information you have | Send the missing piece to the same child; do not respawn it |
+| `NEEDS_CONTEXT` | Missing information you have | Send the missing piece to the same child through `dispatch` (fresh deadline); do not respawn it |
 
 **The advisor is the one exception.** Its `BLOCKED` (host refuses `xhigh`, provider down), a spawn that
 fails, or silence after the nudge is `bd.advisor_unavailable(b, id, reason)`: the reason goes in `notes` and
@@ -502,10 +510,12 @@ reported is `bd.advisor_unavailable(...)` and the engine goes on; the phase is n
 
 ## Loop
 
-0. **Every final report** (first line `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_CONTEXT`) -> first
-   `bd.clear_deadline(b, <that child's name>)`, then the steps below. The heartbeat watches only children that still
-   owe a report; without this it never stops and a finished advisor is later marked unavailable. A `PROGRESS` line
-   (including a draft) is not a final report: the child's deadline stays.
+0. **A final report you accept** -> first `bd.clear_deadline(b, <that child's name>)`, then the steps below.
+   Accepted means: first line `DONE`, `DONE_WITH_CONCERNS` or `BLOCKED`, and for qc and code-reviewer a verdict
+   that `bd.parse_verdict` reads. The heartbeat watches only children that still owe a report; without this it never
+   stops and a finished advisor is later marked unavailable. Not accepted - `NEEDS_CONTEXT`, an unreadable verdict,
+   a `PROGRESS` line or a draft - means the child still owes a report: answer it with `dispatch(...)` (same name, so
+   the child is reused and gets a fresh deadline), never a bare `agent_message.send`.
 1. `next_phase(b)` -> no phase left? go to 8.
 2. Phase `pending` -> dispatch `engine`, `advance(b, id)`, save, end turn.
    - The engine answers first with a draft: `PROGRESS` plus a `DRAFT: <path>` line. The phase stays `engine`.
@@ -520,7 +530,8 @@ reported is `bd.advisor_unavailable(...)` and the engine goes on; the phase is n
 4. Wait for **both** replies before deciding. One arrived and the other has not is not a
    verdict - end the turn and wait. Read each reply with `bd.parse_verdict(role, text)` (qc:
    `VERDICT: PASS|FAIL`, code-reviewer: `VERDICT: APPROVE|REQUEST_CHANGES`). A reply that raises
-   `ValueError` is not a verdict and never a pass: send the same child the exact format and wait. Then:
+   `ValueError` is not a verdict and never a pass: `dispatch` the same child the exact format (fresh
+   deadline) and wait. Then:
    - qc PASS **and** code-reviewer APPROVE -> run the gate (shared + `phase_gate`),
      `advance(b, id, gate=results)` (now `done`), save, go to 1.
    - qc FAIL **or** code-reviewer REQUEST_CHANGES -> `advance(b, id, rework=True, note=...)`, send

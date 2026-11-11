@@ -46,6 +46,7 @@ def save(board, path=BOARD):
     # Same directory, so os.replace is a rename. A unique name per write: two writers never share a tmp file.
     fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".", suffix=".tmp")
     try:
+        os.chmod(tmp, (p.stat().st_mode & 0o777) if p.exists() else 0o644)  # mkstemp makes 0600; keep the board's mode
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(json.dumps(board, indent=2, ensure_ascii=False))
             f.flush()
@@ -199,10 +200,11 @@ def parse_verdict(role, text):
     `Verdict: Ship.` is deliberately not accepted.
     """
     allowed = VERDICTS[role]
-    first = next((line for line in text.splitlines() if line.strip()), "")
-    if not re.match(r"(DONE|DONE_WITH_CONCERNS)\b", first):
+    text = text.replace("\r\n", "\n").replace("\r", "\n").lstrip("\ufeff")  # CRLF, BOM from other tools
+    first = next((line.strip().strip("*`").strip() for line in text.splitlines() if line.strip()), "")
+    if not re.match(r"(DONE|DONE_WITH_CONCERNS)(?=$|[\s:.,])", first):
         raise ValueError(f"{role}: a verdict needs a final report starting with DONE or DONE_WITH_CONCERNS, got {first[:40]!r}")
-    body = re.sub(r"^```.*?^```", "", text, flags=re.M | re.S)  # a VERDICT line quoted inside a code fence is not one
+    body = re.sub(r"^(```|~~~).*?^\1", "", text, flags=re.M | re.S)  # a VERDICT line inside a code fence is not one
     found = {m.group(1) for m in re.finditer(r"^VERDICT: (\S+)[ \t]*$", body, re.M)}
     if len(found) != 1 or next(iter(found)) not in allowed:
         raise ValueError(f"{role}: need exactly one `VERDICT: {'|'.join(allowed)}` line, got {sorted(found) or 'none'}")
@@ -276,6 +278,10 @@ def _demo_storage():
         save(b, p)
         assert not list(p.parent.glob("*.tmp")), "save must leave no tmp file behind"
         assert load(p)["goal"] == b["goal"], "utf-8 must round-trip"
+        assert p.stat().st_mode & 0o777 == 0o644, "a new board is 0644, not mkstemp's 0600"
+        p.chmod(0o640)
+        save(b, p)
+        assert p.stat().st_mode & 0o777 == 0o640, "saving keeps the board's existing mode"
 
         before, real_replace = p.read_text(encoding="utf-8"), os.replace
         def boom(*_):
@@ -327,6 +333,14 @@ def _demo_ops():
     clear_deadline(b, "documenter")
     assert clear_heartbeat(b) == "hb-1" and b["heartbeat"] == ""
 
+    b2 = _new()
+    b2["gate"] = ["a"]
+    pg = add_phase(b2, "p", gate=["b"])
+    advance(b2, pg); advance(b2, pg)
+    assert _rejects(advance, b2, pg, gate=[{"cmd": "a", "exit": 0, "ok": True}]), "the phase gate must run too"
+    advance(b2, pg, gate=[{"cmd": "a", "exit": 0, "ok": True}, {"cmd": "b", "exit": 0, "ok": True}])
+    assert b2["phases"][0]["status"] == "done"
+
     with tempfile.TemporaryDirectory() as d:
         for name in ("0001-a.md", "0007-b.md", "README.md"):
             (Path(d) / name).write_text("x")
@@ -375,6 +389,9 @@ def _demo_verdict():
     assert parse_verdict("code-reviewer", "DONE\nVERDICT: REQUEST_CHANGES  \n1. Lỗi") is False
     assert parse_verdict("qc", "DONE\nVERDICT: PASS\nVERDICT: PASS") is True, "the same line twice is one verdict"
     assert parse_verdict("qc", "DONE_WITH_CONCERNS\nVERDICT: PASS") is True
+    for lead in ("  DONE", "\ufeffDONE", "**DONE**", "`DONE`", "DONE: xong phase 2", "\nDONE"):
+        assert parse_verdict("qc", lead + "\nVERDICT: PASS") is True, f"a real reviewer may start with {lead!r}"
+    assert parse_verdict("qc", "DONE\r\nVERDICT: PASS\r\n") is True, "CRLF line endings"
     assert parse_verdict("qc", "DONE\nVERDICT: FAIL\n```\nVERDICT: PASS\n```") is False, "a fenced line does not count"
     for role, text, why in (
         ("code-reviewer", "DONE\nVERDICT: PASS", "PASS is not a code-reviewer token"),
@@ -388,6 +405,8 @@ def _demo_verdict():
         ("qc", "BLOCKED\nVERDICT: PASS", "a BLOCKED report is not a verdict"),
         ("qc", "PROGRESS\nVERDICT: PASS", "a PROGRESS line is not a final report"),
         ("qc", "DONE\n```\nVERDICT: PASS\n```\nREQ-1 FAIL", "the only VERDICT line is inside a code fence"),
+        ("qc", "DONE\n~~~\nVERDICT: PASS\n~~~\nREQ-1 FAIL", "a ~~~ fence is a code fence too"),
+        ("qc", "DONE-ish\nVERDICT: PASS", "DONE-ish is not DONE"),
         ("qc", "DONE\nReviewer nói VERDICT: PASS", "a mention in the middle of a line is not a verdict"),
         ("qc", "DONE\nVERDICT: PASS kèm ghi chú", "words after the token"),
         ("qc", "DONE\nverdict: PASS", "lower case keyword"),
