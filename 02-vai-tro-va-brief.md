@@ -19,7 +19,7 @@
 | **engine** | Model nhanh, rẻ, viết mã tốt | một model "flash" của nhà cung cấp thứ ba | Làm đúng một phase: dự thảo cho advisor, rồi test đỏ, mã, chạy test | Commit trên nhánh feature, báo cáo `DONE` kèm SHA |
 | **advisor** | `xai/grok-4.7`, thinking `xhigh` | grok-4.7 | Chấm dự thảo (≤1500 từ) theo đúng đầu mục engine đưa; thêm tối đa ba gạch nâng cấp. Không phải state board, không tăng vòng, lỗi thì không block phase | `## Comments` điểm 0–5 + `## Nâng cấp` |
 | **qc** | Model mạnh, chạy được lệnh | Sonnet bản mới nhất | Chấm diff theo acceptance, từng `REQ`; tự kiểm bằng chương trình thật | `VERDICT: PASS/FAIL` + từng REQ |
-| **qc2** | Model KHÁC họ với qc, thinking cao | một model thuộc họ khác | Kiểm độc lập song song với qc | `VERDICT: PASS/FAIL` |
+| **qc2** | Cùng model với qc (người dùng chốt 11/11/2026) | một model thuộc họ khác | Kiểm độc lập song song với qc | `VERDICT: PASS/FAIL` |
 | **code-review** | Model mạnh | Sonnet bản mới nhất | Review chất lượng 6 tiêu chí theo `ponytail-review` v5: đúng, an toàn, chịu tải, có test, nhanh, gọn | `VERDICT: APPROVE/REQUEST_CHANGES` + phát hiện có mức độ |
 | **documenter** | Model nhanh, viết văn tốt | một model "flash" | Viết, cập nhật, rút gọn tài liệu theo bản đã ship | File tài liệu trong repo |
 | **research** | Model mạnh | Sonnet bản mới nhất | Đọc, đo trên hệ thống thật, ghi báo cáo | File Markdown + tóm tắt <= 25 dòng |
@@ -27,6 +27,8 @@
 | **verifier** | Model mạnh | Sonnet bản mới nhất | e2e + bảo mật toàn hệ thống, quyết định ship | `PASS` hoặc lỗi chặn kèm bằng chứng |
 
 > **Về qc2.** Dự án gốc đo qc (model mạnh, hay chạy chương trình thật để tái hiện lỗi) và qc2 (model khác, đọc mã kỹ) trên cùng các ticket. Kết luận sơ bộ: qc là cổng chính, bắt lỗi nặng và xếp mức chuẩn hơn; qc2 là người đọc thứ hai, ra ít phát hiện độc nhất, có lúc xếp mức quá thấp và có một lần PASS sai, nhưng cũng có lúc thấy lỗi qc bỏ sót. Không nhanh hơn. Đề xuất: giữ cả hai song song, lấy verdict của qc làm chuẩn, thêm thang mức độ và yêu cầu chạy thật vào brief qc2, đo lại sau 5-10 phiên. Mẫu nhỏ, chưa chốt.
+>
+> **Chốt (người dùng chốt 11/11/2026):** qc2 dùng cùng model với qc. Tính độc lập đến từ phiên riêng với ngữ cảnh sạch và brief ưu tiên tìm lỗi khác, không từ họ model.
 >
 > **Về nhà cung cấp.** Một số model rẻ "huấn luyện trên dữ liệu request". Gửi mã và log của bạn cho họ là quyết định của người dùng. Hỏi trước khi bật. Child thoát rỗng ngay lập tức thường là vì cài đặt riêng tư hoặc vì nhà cung cấp không tới được: kiểm bằng một lệnh gọi trực tiếp trước khi spawn lại.
 
@@ -221,7 +223,7 @@ Bạn không soát phong cách hay cấu trúc mã: reviewer khác làm việc �
 ### qc2
 
 ```text
-Vai: qc2. Kiểm thử ĐỘC LẬP, chạy SONG SONG với qc, cùng brief qc (xem brief-qc.md). Dùng model khác với qc.
+Vai: qc2. Kiểm thử ĐỘC LẬP, chạy SONG SONG với qc, cùng brief qc (xem brief-qc.md). Cùng model với qc (người dùng chốt 11/11/2026): khác biệt nằm ở phiên riêng với ngữ cảnh sạch và ở ưu tiên tìm lỗi bên dưới, không ở model.
 
 Khác với qc:
 - Bạn không thấy báo cáo của qc. Đừng hỏi.
@@ -230,7 +232,7 @@ Khác với qc:
 - Phải CHẠY THẬT khi phát hiện dựa vào hành vi chương trình. Đọc mã chưa đủ để kết luận PASS.
 - ADR của repo khác (nếu brief trỏ tới): đọc cả chúng, đường dẫn: <đường dẫn>.
 
-Báo cáo: giống qc (VERDICT: PASS hoặc FAIL, từng REQ, phát hiện kèm mức độ và `file:dòng`). Parent gộp: FAIL của bất kỳ ai là một vòng sửa.
+Báo cáo: giống qc (`VERDICT: PASS` hoặc `VERDICT: FAIL`, chữ hoa, một mình trên một dòng; từng REQ; phát hiện kèm mức độ và `file:dòng`). Parent gộp: FAIL của bất kỳ ai là một vòng sửa.
 ```
 
 ### code-review

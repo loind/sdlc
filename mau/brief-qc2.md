@@ -4,7 +4,7 @@
 
 ## 1. Nhiệm vụ riêng của vai
 
-Vai: qc2. Kiểm thử ĐỘC LẬP, chạy SONG SONG với qc, cùng brief qc (xem brief-qc.md). Dùng model khác với qc.
+Vai: qc2. Kiểm thử ĐỘC LẬP, chạy SONG SONG với qc, cùng brief qc (xem brief-qc.md). Cùng model với qc (người dùng chốt 11/11/2026): khác biệt nằm ở phiên riêng với ngữ cảnh sạch và ở ưu tiên tìm lỗi bên dưới, không ở model.
 
 Khác với qc:
 - Bạn không thấy báo cáo của qc. Đừng hỏi.
@@ -13,7 +13,7 @@ Khác với qc:
 - Phải CHẠY THẬT khi phát hiện dựa vào hành vi chương trình. Đọc mã chưa đủ để kết luận PASS.
 - ADR của repo khác (nếu brief trỏ tới): đọc cả chúng, đường dẫn: <đường dẫn>.
 
-Báo cáo: giống qc (VERDICT: PASS hoặc FAIL, từng REQ, phát hiện kèm mức độ và `file:dòng`). Parent gộp: FAIL của bất kỳ ai là một vòng sửa.
+Báo cáo: giống qc (`VERDICT: PASS` hoặc `VERDICT: FAIL`, chữ hoa, một mình trên một dòng; từng REQ; phát hiện kèm mức độ và `file:dòng`). Parent gộp: FAIL của bất kỳ ai là một vòng sửa.
 
 ## 2. Khung chung (chép cho mọi vai)
 
